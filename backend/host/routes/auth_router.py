@@ -20,7 +20,6 @@ from backend.mcp_server.db.queries import (
     GET_USER_BY_ID,
     INSERT_USER_AUTH,
     UPDATE_USER_PROFILE,
-    INSERT_USER,
 )
 from backend.services.supabase import get_or_create_user_profile, is_supabase_rest_configured, upsert_user_profile
 
@@ -66,25 +65,6 @@ def _user_payload(user) -> dict:
         "max_travel_minutes": user["max_travel_minutes"],
         "phone": user["phone"],
     }
-
-
-def _sync_local_user_profile(profile: dict) -> dict:
-    with get_connection() as conn:
-        conn.execute(
-            INSERT_USER,
-            {
-                "name": profile["name"],
-                "email": profile["email"],
-                "phone": profile.get("phone"),
-                "home_area": profile.get("home_area"),
-                "travel_mode": profile.get("travel_mode") or "train",
-                "max_travel_minutes": profile.get("max_travel_minutes") or 60,
-            },
-        )
-        user = conn.execute(GET_USER_BY_EMAIL, {"email": profile["email"]}).fetchone()
-    return _user_payload(user)
-
-
 @router.post("/register", response_model=AuthResponse, status_code=201)
 def register(body: RegisterRequest):
     with get_connection() as conn:
@@ -137,8 +117,7 @@ def get_me(
     access_token: str = Depends(get_current_access_token),
 ):
     if is_supabase_auth_payload(payload) and is_supabase_rest_configured():
-        profile = get_or_create_user_profile(access_token, payload)
-        return _sync_local_user_profile(profile)
+        return get_or_create_user_profile(access_token, payload)
 
     with get_connection() as conn:
         user = conn.execute(GET_USER_BY_ID, {"user_id": user_id}).fetchone()
@@ -155,7 +134,7 @@ def update_me(
     access_token: str = Depends(get_current_access_token),
 ):
     if is_supabase_auth_payload(payload) and is_supabase_rest_configured():
-        profile = upsert_user_profile(
+        return upsert_user_profile(
             access_token,
             payload,
             {
@@ -166,7 +145,6 @@ def update_me(
                 "max_travel_minutes": body.max_travel_minutes,
             },
         )
-        return _sync_local_user_profile(profile)
 
     with get_connection() as conn:
         updated = conn.execute(

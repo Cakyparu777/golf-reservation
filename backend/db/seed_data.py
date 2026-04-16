@@ -77,13 +77,13 @@ COURSES = [
     },
 ]
 
-# Price tiers by time of day (USD)
+# Price tiers by time of day (JPY)
 PRICE_TIERS = {
-    "early": 85.00,    # 6:00 – 7:30
-    "prime": 150.00,   # 8:00 – 11:00
-    "midday": 120.00,  # 11:30 – 14:00
-    "afternoon": 95.00, # 14:30 – 16:00
-    "twilight": 65.00, # 16:30 – 18:00
+    "early": 8500.0,      # 6:00 - 7:30
+    "prime": 15000.0,     # 8:00 - 11:00
+    "midday": 12000.0,    # 11:30 - 14:00
+    "afternoon": 9500.0,  # 14:30 - 16:00
+    "twilight": 6500.0,   # 16:30 - 18:00
 }
 
 TEE_TIME_HOURS = [

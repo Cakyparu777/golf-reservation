@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from backend.host.auth import get_current_user_id
+from backend.host.auth import get_current_access_token, get_current_auth_payload, get_current_user_id
 from backend.mcp_server.db.connection import get_connection
 from backend.mcp_server.db.queries import (
     GET_TEE_TIME_BY_ID,
@@ -22,6 +22,15 @@ from backend.mcp_server.db.queries import (
     LIST_USER_RESERVATIONS,
     GET_RESERVATION_BY_ID,
     GET_USER_BY_ID,
+)
+from backend.services.supabase import (
+    cancel_reservation as cancel_supabase_reservation,
+    get_or_create_user_profile,
+    get_my_reservation,
+    is_supabase_rest_configured,
+    is_supabase_service_role_configured,
+    list_my_reservations,
+    make_reservation as make_supabase_reservation,
 )
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
@@ -45,7 +54,13 @@ class ReservationOut(BaseModel):
 
 
 @router.get("", response_model=list[ReservationOut])
-def list_reservations(user_id: int = Depends(get_current_user_id)):
+def list_reservations(
+    user_id: int = Depends(get_current_user_id),
+    access_token: str = Depends(get_current_access_token),
+):
+    if is_supabase_rest_configured():
+        return [_row_to_out(r) for r in list_my_reservations(access_token)]
+
     with get_connection() as conn:
         user = conn.execute(GET_USER_BY_ID, {"user_id": user_id}).fetchone()
         if not user:
@@ -58,7 +73,33 @@ def list_reservations(user_id: int = Depends(get_current_user_id)):
 
 
 @router.post("", response_model=ReservationOut, status_code=201)
-def create_reservation(body: CreateReservationRequest, user_id: int = Depends(get_current_user_id)):
+def create_reservation(
+    body: CreateReservationRequest,
+    user_id: int = Depends(get_current_user_id),
+    payload: dict = Depends(get_current_auth_payload),
+    access_token: str = Depends(get_current_access_token),
+):
+    if is_supabase_rest_configured():
+        if not is_supabase_service_role_configured():
+            raise HTTPException(status_code=503, detail="Supabase service role key is not configured.")
+        profile = get_or_create_user_profile(access_token, payload)
+        result = make_supabase_reservation(
+            tee_time_id=body.tee_time_id,
+            user_name=profile["name"],
+            user_email=profile["email"],
+            num_players=body.num_players,
+            user_phone=profile.get("phone"),
+            auth_user_id=profile.get("auth_user_id"),
+        )
+        if result.get("error"):
+            message = str(result["error"])
+            status_code = 409 if "available" in message.lower() else 400
+            raise HTTPException(status_code=status_code, detail=message)
+        reservation = result.get("reservation")
+        if not reservation:
+            raise HTTPException(status_code=500, detail="Reservation response was missing data.")
+        return _row_to_out(reservation)
+
     with get_connection() as conn:
         tee_time = conn.execute(GET_TEE_TIME_BY_ID, {"tee_time_id": body.tee_time_id}).fetchone()
         if not tee_time:
@@ -109,7 +150,22 @@ def create_reservation(body: CreateReservationRequest, user_id: int = Depends(ge
 
 
 @router.delete("/{reservation_id}", status_code=204)
-def cancel_reservation(reservation_id: int, user_id: int = Depends(get_current_user_id)):
+def cancel_reservation(
+    reservation_id: int,
+    user_id: int = Depends(get_current_user_id),
+    access_token: str = Depends(get_current_access_token),
+):
+    if is_supabase_rest_configured():
+        if not is_supabase_service_role_configured():
+            raise HTTPException(status_code=503, detail="Supabase service role key is not configured.")
+        row = get_my_reservation(access_token, reservation_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Reservation not found.")
+        result = cancel_supabase_reservation(reservation_id=reservation_id, reason="Cancelled by user")
+        if result.get("error"):
+            raise HTTPException(status_code=409, detail=str(result["error"]))
+        return
+
     with get_connection() as conn:
         row = conn.execute(GET_RESERVATION_BY_ID, {"reservation_id": reservation_id}).fetchone()
         if not row:
@@ -146,7 +202,7 @@ def _row_to_out(row) -> ReservationOut:
         course_name=row["course_name"],
         tee_datetime=row["tee_datetime"],
         num_players=row["num_players"],
-        total_price=row["total_price"],
+        total_price=float(row["total_price"]),
         status=row["status"],
         confirmation_number=row["confirmation_number"],
         created_at=row["created_at"],

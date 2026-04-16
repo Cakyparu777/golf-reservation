@@ -34,10 +34,7 @@ class CourseOut(BaseModel):
 @router.get("", response_model=list[CourseOut])
 def list_courses():
     if is_supabase_rest_configured():
-        try:
-            return [_row_to_course(r) for r in list_supabase_courses()]
-        except Exception:
-            pass
+        return [_row_to_course(r) for r in list_supabase_courses()]
 
     with get_connection() as conn:
         rows = conn.execute(LIST_COURSES).fetchall()
@@ -47,12 +44,9 @@ def list_courses():
 @router.get("/{course_id}", response_model=CourseOut)
 def get_course(course_id: int):
     if is_supabase_rest_configured():
-        try:
-            row = get_supabase_course(course_id)
-            if row:
-                return _row_to_course(row)
-        except Exception:
-            pass
+        row = get_supabase_course(course_id)
+        if row:
+            return _row_to_course(row)
 
     with get_connection() as conn:
         row = conn.execute(GET_COURSE_BY_ID, {"course_id": course_id}).fetchone()
@@ -75,9 +69,9 @@ def _row_to_course(row) -> CourseOut:
         location=row["location"],
         holes=row["holes"] or 18,
         par=row["par"],
-        rating=row["rating"],
+        rating=float(row["rating"]) if row["rating"] is not None else None,
         phone=row["phone"],
         amenities=amenities,
         next_available=row["next_available"] if "next_available" in row.keys() else None,
-        min_price=row["min_price"] if "min_price" in row.keys() else None,
+        min_price=float(row["min_price"]) if "min_price" in row.keys() and row["min_price"] is not None else None,
     )

@@ -7,12 +7,20 @@ services:
       - .env
     environment:
       DATABASE_PATH: /app/data/golf_reservation.db
+      CONVERSATION_BACKEND: ${CONVERSATION_BACKEND:-memory}
       HOST: 0.0.0.0
       PORT: 8000
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      SUPABASE_PROJECT_REF: ${SUPABASE_PROJECT_REF}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
     volumes:
       - backend-data:/app/data
     ports:
       - "8000:8000"
+    depends_on:
+      - redis
 
   frontend:
     build:
@@ -25,6 +33,11 @@ services:
       - backend
     ports:
       - "3000:80"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
 
 volumes:
   backend-data:

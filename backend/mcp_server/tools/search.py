@@ -11,6 +11,14 @@ from datetime import datetime
 from typing import Optional
 
 from backend.services.location import estimate_travel_minutes, resolve_area_coordinates
+from backend.services.supabase import (
+    get_course as get_supabase_course,
+    get_course_by_name as get_supabase_course_by_name,
+    get_course_coordinates,
+    is_supabase_rest_configured,
+    list_alternative_tee_times,
+    search_tee_times as search_supabase_tee_times,
+)
 from backend.services.weather import get_weather_forecast
 from backend.services.weather import meets_default_play_preferences
 
@@ -57,7 +65,7 @@ def _time_range_for_preference(preferred_time: Optional[str]) -> tuple[str, str]
 def _recommendation_score(tee_time: TeeTime, weather: Optional[dict]) -> float:
     assessment = str((weather or {}).get("assessment") or "")
     weather_score = {"good": 100.0, "mixed": 70.0, "bad": 35.0}.get(assessment, 55.0)
-    value_score = max(0.0, 35.0 - (tee_time.price_per_player / 5.0))
+    value_score = max(0.0, 35.0 - (tee_time.price_per_player / 500.0))
     availability_score = min(float(tee_time.available_slots), 4.0) * 3.0
     return round(weather_score + value_score + availability_score, 2)
 
@@ -115,12 +123,23 @@ def search_tee_times(
         course_filter = queries.SEARCH_TEE_TIMES_COURSE_FILTER
         params["course_name"] = f"%{course_name}%"
 
-    query = queries.SEARCH_TEE_TIMES.format(course_filter=course_filter)
+    if is_supabase_rest_configured():
+        rows = search_supabase_tee_times(
+            date=date,
+            num_players=num_players,
+            course_name=course_name,
+            time_range_start=time_range_start,
+            time_range_end=time_range_end,
+            limit=20,
+        )
+        tee_times = [TeeTime(**row) for row in rows]
+    else:
+        query = queries.SEARCH_TEE_TIMES.format(course_filter=course_filter)
 
-    with get_connection() as conn:
-        rows = conn.execute(query, params).fetchall()
+        with get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
 
-    tee_times = _exclude_past_tee_times(date, [TeeTime(**dict(row)) for row in rows], now)
+        tee_times = _exclude_past_tee_times(date, [TeeTime(**dict(row)) for row in rows], now)
 
     result = SearchResult(available_tee_times=tee_times, total_results=len(tee_times))
     return result.model_dump()
@@ -143,18 +162,21 @@ def get_course_info(
     if not course_id and not course_name:
         return {"error": "Please provide either a course_id or course_name."}
 
-    with get_connection() as conn:
-        if course_id:
-            row = conn.execute(queries.GET_COURSE_BY_ID, {"course_id": course_id}).fetchone()
-        else:
-            row = conn.execute(
-                queries.GET_COURSE_BY_NAME, {"course_name": f"%{course_name}%"}
-            ).fetchone()
+    if is_supabase_rest_configured():
+        row = get_supabase_course(course_id) if course_id else get_supabase_course_by_name(course_name or "")
+    else:
+        with get_connection() as conn:
+            if course_id:
+                row = conn.execute(queries.GET_COURSE_BY_ID, {"course_id": course_id}).fetchone()
+            else:
+                row = conn.execute(
+                    queries.GET_COURSE_BY_NAME, {"course_name": f"%{course_name}%"}
+                ).fetchone()
 
     if not row:
         return {"error": f"No course found matching your search."}
 
-    course = GolfCourse(**dict(row))
+    course = GolfCourse(**dict(row) if not isinstance(row, dict) else row)
     result = course.model_dump()
 
     # Parse amenities JSON for readability
@@ -203,47 +225,75 @@ def suggest_alternatives(
     time_end = time_range_start  # Use same time for nearby search
     time_range_start = _effective_time_range_start(date, time_range_start, now)
 
-    with get_connection() as conn:
-        # 1. Find nearby courses with availability
-        if latitude is not None and longitude is not None:
-            rows = conn.execute(
-                queries.NEARBY_COURSES,
-                {
-                    "lat": latitude,
-                    "lng": longitude,
-                    "num_players": num_players,
-                    "date": date,
-                    "time_start": time_range_start,
-                    "time_end": "23:59",
-                },
-            ).fetchall()
-            nearby = _exclude_past_tee_times(date, [TeeTime(**dict(row)) for row in rows], now)
-        else:
-            # If no coordinates, just find any available courses at this time
-            rows = conn.execute(
-                queries.SEARCH_TEE_TIMES.format(course_filter=""),
-                {
-                    "date": date,
-                    "num_players": num_players,
-                    "time_start": time_range_start,
-                    "time_end": "23:59",
-                },
-            ).fetchall()
-            nearby = _exclude_past_tee_times(date, [TeeTime(**dict(row)) for row in rows], now)
+    if is_supabase_rest_configured():
+        nearby_rows = search_supabase_tee_times(
+            date=date,
+            num_players=num_players,
+            time_range_start=time_range_start,
+            time_range_end="23:59",
+            limit=50,
+        )
+        nearby = [TeeTime(**row) for row in nearby_rows]
 
-        # 2. Find alternative times at the same course
+        if latitude is not None and longitude is not None:
+            def distance_sq(item: TeeTime) -> float:
+                course_lat, course_lon = get_course_coordinates(item.course_id)
+                if course_lat is None or course_lon is None:
+                    return float("inf")
+                return (course_lat - latitude) ** 2 + (course_lon - longitude) ** 2
+
+            nearby = sorted(nearby, key=distance_sq)[:10]
+
         if course_name:
-            rows = conn.execute(
-                queries.ALTERNATIVE_TIMES,
-                {
-                    "course_name": f"%{course_name}%",
-                    "num_players": num_players,
-                    "date": date,
-                    "time_start": time_range_start,
-                    "time_end": time_end,
-                },
-            ).fetchall()
-            alternatives = _exclude_past_tee_times(date, [TeeTime(**dict(row)) for row in rows], now)
+            alt_rows = list_alternative_tee_times(
+                date=date,
+                num_players=num_players,
+                course_name=course_name,
+                time_range_start=time_range_start,
+                time_range_end=time_end,
+                limit=10,
+            )
+            alternatives = [TeeTime(**row) for row in alt_rows]
+    else:
+        with get_connection() as conn:
+            # 1. Find nearby courses with availability
+            if latitude is not None and longitude is not None:
+                rows = conn.execute(
+                    queries.NEARBY_COURSES,
+                    {
+                        "lat": latitude,
+                        "lng": longitude,
+                        "num_players": num_players,
+                        "date": date,
+                        "time_start": time_range_start,
+                        "time_end": "23:59",
+                    },
+                ).fetchall()
+                nearby = _exclude_past_tee_times(date, [TeeTime(**dict(row)) for row in rows], now)
+            else:
+                rows = conn.execute(
+                    queries.SEARCH_TEE_TIMES.format(course_filter=""),
+                    {
+                        "date": date,
+                        "num_players": num_players,
+                        "time_start": time_range_start,
+                        "time_end": "23:59",
+                    },
+                ).fetchall()
+                nearby = _exclude_past_tee_times(date, [TeeTime(**dict(row)) for row in rows], now)
+
+            if course_name:
+                rows = conn.execute(
+                    queries.ALTERNATIVE_TIMES,
+                    {
+                        "course_name": f"%{course_name}%",
+                        "num_players": num_players,
+                        "date": date,
+                        "time_start": time_range_start,
+                        "time_end": time_end,
+                    },
+                ).fetchall()
+                alternatives = _exclude_past_tee_times(date, [TeeTime(**dict(row)) for row in rows], now)
 
     message_parts = []
     if nearby:
@@ -308,12 +358,16 @@ def recommend_tee_times(
             )
 
         if travel_minutes is None and area_coords:
-            with get_connection() as conn:
-                course_row = conn.execute(
-                    "SELECT latitude, longitude FROM golf_courses WHERE id = :course_id",
-                    {"course_id": tee_time.course_id},
-                ).fetchone()
-            if course_row:
+            if is_supabase_rest_configured():
+                course_lat, course_lon = get_course_coordinates(tee_time.course_id)
+                course_row = {"latitude": course_lat, "longitude": course_lon}
+            else:
+                with get_connection() as conn:
+                    course_row = conn.execute(
+                        "SELECT latitude, longitude FROM golf_courses WHERE id = :course_id",
+                        {"course_id": tee_time.course_id},
+                    ).fetchone()
+            if course_row and course_row["latitude"] is not None and course_row["longitude"] is not None:
                 travel_minutes = estimate_travel_minutes(
                     from_lat=area_coords[0],
                     from_lon=area_coords[1],

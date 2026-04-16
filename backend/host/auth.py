@@ -15,7 +15,7 @@ from passlib.context import CryptContext
 
 from backend.mcp_server.db.connection import get_connection
 from backend.mcp_server.db.queries import GET_USER_BY_EMAIL, INSERT_USER
-from backend.services.supabase import is_supabase_subject
+from backend.services.supabase import is_supabase_rest_configured, is_supabase_subject
 
 SECRET_KEY = os.getenv("SECRET_KEY", "fairway-elite-dev-secret-change-in-prod")
 ALGORITHM = "HS256"
@@ -156,6 +156,8 @@ def get_current_user_id(
     subject = str(payload.get("sub") or "")
     if subject.isdigit():
         return int(subject)
+    if is_supabase_rest_configured():
+        return 0
     return _resolve_or_create_local_user_id(payload)
 
 

@@ -6,14 +6,26 @@ with two-phase booking (PENDING → CONFIRMED).
 
 from __future__ import annotations
 
+import os
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from backend.services.supabase import (
+    cancel_reservation as cancel_supabase_reservation,
+    confirm_reservation as confirm_supabase_reservation,
+    is_supabase_service_role_configured,
+    make_reservation as make_supabase_reservation,
+)
+
 from ..db.connection import get_connection
 from ..db.models import Reservation, ReservationResult, ReservationStatus
 from ..db import queries
+
+
+def _format_jpy(amount: float) -> str:
+    return f"JPY {amount:,.0f}"
 
 
 def _generate_confirmation_number() -> str:
@@ -71,6 +83,18 @@ def make_reservation(
     Returns:
         Dictionary with the reservation details and status message.
     """
+    if os.getenv("SUPABASE_URL") and not is_supabase_service_role_configured():
+        return {"error": "Supabase service role key is not configured."}
+
+    if is_supabase_service_role_configured():
+        return make_supabase_reservation(
+            tee_time_id=tee_time_id,
+            user_name=user_name,
+            user_email=user_email,
+            num_players=num_players,
+            user_phone=user_phone,
+        )
+
     if num_players < 1 or num_players > 4:
         return {"error": "Number of players must be between 1 and 4."}
 
@@ -146,7 +170,7 @@ def make_reservation(
         reservation=reservation,
         message=f"Reservation created! Please confirm within 10 minutes. "
                 f"Booking: {reservation.course_name} on {reservation.tee_datetime} "
-                f"for {num_players} player(s). Total: ${total_price:.2f}.",
+                f"for {num_players} player(s). Total: {_format_jpy(total_price)}.",
     ).model_dump()
 
 
@@ -159,6 +183,12 @@ def confirm_reservation(reservation_id: int) -> dict:
     Returns:
         Dictionary with updated reservation and confirmation number.
     """
+    if os.getenv("SUPABASE_URL") and not is_supabase_service_role_configured():
+        return {"error": "Supabase service role key is not configured."}
+
+    if is_supabase_service_role_configured():
+        return confirm_supabase_reservation(reservation_id)
+
     with get_connection() as conn:
         # Expire stale holds
         _expire_stale_holds(conn)
@@ -227,6 +257,12 @@ def cancel_reservation(
     Returns:
         Dictionary with cancellation confirmation.
     """
+    if os.getenv("SUPABASE_URL") and not is_supabase_service_role_configured():
+        return {"error": "Supabase service role key is not configured."}
+
+    if is_supabase_service_role_configured():
+        return cancel_supabase_reservation(reservation_id, reason)
+
     with get_connection() as conn:
         # Fetch current reservation
         row = conn.execute(

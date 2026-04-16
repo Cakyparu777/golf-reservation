@@ -7,6 +7,12 @@ from __future__ import annotations
 
 from typing import Optional
 
+from backend.services.supabase import (
+    is_supabase_rest_configured,
+    is_supabase_service_role_configured,
+    list_reservations_for_email,
+)
+
 from ..db.connection import get_connection
 from ..db.models import Reservation
 from ..db import queries
@@ -36,12 +42,22 @@ def list_user_reservations(
         filter_clause = queries.LIST_USER_RESERVATIONS_STATUS_FILTER
         params = {"email": user_email, "status": status}
 
-    query = queries.LIST_USER_RESERVATIONS.format(status_filter=filter_clause)
+    if is_supabase_rest_configured():
+        if not is_supabase_service_role_configured():
+            return {
+                "reservations": [],
+                "total": 0,
+                "message": "Supabase service role key is not configured.",
+            }
+        rows = list_reservations_for_email(user_email=user_email, status_filter=status_filter)
+        reservations = [Reservation(**row) for row in rows]
+    else:
+        query = queries.LIST_USER_RESERVATIONS.format(status_filter=filter_clause)
 
-    with get_connection() as conn:
-        rows = conn.execute(query, params).fetchall()
+        with get_connection() as conn:
+            rows = conn.execute(query, params).fetchall()
 
-    reservations = [Reservation(**dict(row)) for row in rows]
+        reservations = [Reservation(**dict(row)) for row in rows]
 
     if not reservations:
         return {

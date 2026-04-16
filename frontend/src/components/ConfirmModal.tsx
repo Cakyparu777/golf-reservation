@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, Calendar, Clock, Users, Flag, Award, MapPin, CheckCircle, SunMedium, CloudSun, CloudRain } from 'lucide-react'
 import { useAuth, authFetch } from '../context/AuthContext'
 import type { CourseData } from './TeeTimesPage'
+import { formatJPY } from '../lib/currency'
 import { fetchWeatherForTeeTime, type WeatherSummary } from '../lib/weather'
 
 interface TeeTime {
@@ -141,7 +142,7 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
               <CheckCircle size={56} className="text-[#1a3d2b] mb-4" />
               <p className="text-lg font-bold text-gray-900">You're on the fairway!</p>
               <p className="text-sm text-gray-500 mt-1 mb-2">{course.name}</p>
-              <p className="text-2xl font-extrabold text-gray-900 mt-2">${confirmed.total_price.toFixed(2)}</p>
+              <p className="text-2xl font-extrabold text-gray-900 mt-2">{formatJPY(confirmed.total_price)}</p>
               <p className="text-xs text-gray-400 mt-1">Total charged</p>
               <button
                 onClick={onClose}
@@ -243,7 +244,7 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
               {/* Price */}
               <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-4">
                 <p className="text-sm text-gray-500">Total Booking Fee</p>
-                <p className="text-2xl font-extrabold text-gray-900">${total.toFixed(2)}</p>
+                <p className="text-2xl font-extrabold text-gray-900">{formatJPY(total)}</p>
               </div>
 
               <button

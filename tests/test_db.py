@@ -136,7 +136,7 @@ class TestSearchQueries:
             "num_players": 1,
             "time_start": "06:00",
             "time_end": "18:00",
-            "course_name": "%Pebble%",
+            "course_name": "%Wakasu%",
         }
 
         with get_connection(seeded_db) as conn:
@@ -144,7 +144,7 @@ class TestSearchQueries:
 
         assert len(rows) > 0
         for row in rows:
-            assert "Pebble" in row["course_name"]
+            assert "Wakasu" in row["course_name"]
 
     def test_search_too_many_players_reduces_results(self, seeded_db):
         """Requesting slots for more players than available should return fewer results."""

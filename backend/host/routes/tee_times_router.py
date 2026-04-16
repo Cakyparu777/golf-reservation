@@ -34,23 +34,20 @@ def search_tee_times(
     limit: int = Query(20, ge=1, le=100),
 ):
     if is_supabase_rest_configured():
-        try:
-            rows = list_supabase_tee_times(course_id=course_id, num_players=num_players, limit=limit)
-            return [
-                TeeTimeOut(
-                    id=r["id"],
-                    course_id=r["course_id"],
-                    course_name=r["course_name"],
-                    course_location=r["course_location"],
-                    tee_datetime=r["tee_datetime"],
-                    available_slots=r["available_slots"],
-                    max_players=r["max_players"],
-                    price_per_player=r["price_per_player"],
-                )
-                for r in rows
-            ]
-        except Exception:
-            pass
+        rows = list_supabase_tee_times(course_id=course_id, num_players=num_players, limit=limit)
+        return [
+            TeeTimeOut(
+                id=r["id"],
+                course_id=r["course_id"],
+                course_name=r["course_name"],
+                course_location=r["course_location"],
+                tee_datetime=r["tee_datetime"],
+                available_slots=r["available_slots"],
+                max_players=r["max_players"],
+                price_per_player=float(r["price_per_player"]),
+            )
+            for r in rows
+        ]
 
     with get_connection() as conn:
         if course_id:

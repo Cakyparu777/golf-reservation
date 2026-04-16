@@ -32,7 +32,7 @@ from .confirmation import (
     merge_booking_details,
     should_request_confirmation,
 )
-from .llm import LLMClient
+from .llm import LLMClient, ToolCallParseError
 from .mcp_client import MCPClient
 from .schemas import ChatRequest, ChatResponse, HealthResponse
 from .routes.auth_router import router as auth_router
@@ -48,6 +48,7 @@ from .session_context import (
     extract_context_from_tool_result,
     resolve_context,
 )
+from backend.services.supabase import is_supabase_rest_configured
 from backend.services.weather import get_weather_forecast
 
 # Load environment variables
@@ -127,9 +128,11 @@ async def lifespan(app: FastAPI):
     """Initialize clients on startup, clean up on shutdown."""
     global llm_client, mcp_client
 
-    # Ensure DB is initialized and seeded
-    from backend.db.seed_data import seed_database
-    seed_database()
+    # Ensure the SQLite fallback is initialized for local development/tests.
+    if not is_supabase_rest_configured():
+        from backend.db.seed_data import seed_database
+
+        seed_database()
 
     llm_client = LLMClient()
     mcp_client = MCPClient()
@@ -262,16 +265,25 @@ async def chat(request: ChatRequest):
     max_iterations = 5  # Safety limit for tool-call loops
 
     async with mcp_client.connect() as mcp_session:
+        openai_tools = await mcp_client.list_openai_tools(mcp_session)
+
         for iteration in range(max_iterations):
             history = conversation.get_history(session_id)
             context_note = build_context_system_note(conversation.get_active_context(session_id))
             request_history = history + ([{"role": "system", "content": context_note}] if context_note else [])
 
             # Call OpenAI
-            assistant_message = llm_client.chat(request_history)
+            assistant_message = llm_client.chat(request_history, openai_tools)
 
             # Check if the LLM wants to call tools
-            tool_calls = llm_client.parse_tool_calls(assistant_message)
+            try:
+                tool_calls = llm_client.parse_tool_calls(assistant_message)
+            except ToolCallParseError as exc:
+                logger.error("Malformed tool call returned by LLM: %s", exc)
+                raise HTTPException(
+                    status_code=502,
+                    detail="The language model returned an invalid tool call.",
+                ) from exc
 
             if not tool_calls:
                 # No tool calls — we have the final response

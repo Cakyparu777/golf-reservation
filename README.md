@@ -4,41 +4,44 @@
 
 ゴルフ予約向けの会話型アシスタントです。**MCP (Model Context Protocol)** を実際のプロダクトフローにどう組み込むかを見せるために作っています。
 
-このプロジェクトでは、単に LLM に自然文を返させるだけではなく、以下を明確に分離しています。
+このプロジェクトでは、以下を明確に分離しています。
 
 - **LLM Host**: 会話状態、確認フロー、ツール実行の制御
 - **MCP Server**: ゴルフ予約ドメインのツール群
-- **Supabase 連携**: Auth / Postgres / RLS への段階的移行
-
-採用担当者向けに言うと、このリポジトリで見せたいのは「AI チャットが作れること」だけではなく、**MCP を使って業務ロジックを安全に扱える設計ができること**です。
+- **Supabase**: Auth / Postgres / RLS / RPC を使った本番向けデータ基盤
 
 ## このプロジェクトで見せたいこと
 
 - LLM をデータの正解源にしない設計
 - 予約・検索・天気確認を **MCP ツール**に切り出す実装
+- Host が MCP サーバーから **ネイティブにツール定義を discover** する構成
 - `that day` / `there` / `book the second one` のような follow-up を解決する**構造化メモリ**
-- SQLite から Supabase/Postgres に移る**段階的なマイグレーション設計**
-- フロントエンド、バックエンド、Auth、RLS まで含めた**実務寄りの統合**
+- Supabase Auth と Postgres を使った、会話 UI から予約データまで一貫したバックエンド設計
 
 ## 技術スタック
 
 - **Backend:** FastAPI, Python, MCP, OpenAI
 - **Frontend:** React, TypeScript, Vite
-- **Data:** SQLite（現行） / Supabase Postgres（移行中）
-- **Auth:** ローカル JWT + Supabase Auth 対応
-- **Infra direction:** Supabase, RLS, MCP-connected tooling
+- **Data:** Supabase Postgres
+- **Auth:** Supabase Auth
+- **Conversation state:** memory（デフォルト） / Redis（任意）
+- **Local test fallback:** SQLite fixtures
 
 ## アーキテクチャ
 
 ```text
-User -> FastAPI Host -> OpenAI LLM -> MCP Client -> MCP Server -> SQLite / Supabase-ready Postgres
+User -> FastAPI Host -> OpenAI LLM -> MCP Client -> MCP Server -> Supabase Postgres
+                         |                              |
+                         +-> conversation state -> Memory or Redis
+                         +-> Supabase Auth JWT verification / profile sync
 ```
 
 - **Host (FastAPI)**
   - 会話状態管理
   - 確認フロー
   - follow-up 解決
-  - ツール呼び出し制御
+  - MCP ツール discovery と tool orchestration
+  - Supabase JWT 検証
 - **MCP Server (FastMCP)**
   - ティータイム検索
   - コース情報取得
@@ -46,20 +49,27 @@ User -> FastAPI Host -> OpenAI LLM -> MCP Client -> MCP Server -> SQLite / Supab
   - レコメンド
   - 予約作成 / 確認 / キャンセル
   - 天気確認
-- **LLM (OpenAI)**
-  - 意図解釈
-  - 応答生成
-  - どのツールを呼ぶかの判断
+- **Supabase**
+  - Auth
+  - Postgres tables / views / RLS
+  - transactional RPC for reservation writes
 
 ## MCP の使い方
-
-このプロジェクトでは、LLM に予約データを「それっぽく推測」させていません。
 
 - ゴルフ予約ドメインの操作は **MCP ツール**として分離
 - Host 側で確認・文脈解決・メモリ管理を担当
 - LLM は自然な会話とツール選択に集中
+- OpenAI へ渡す tool schema は **MCP サーバーから動的に取得**
 
 つまり、**自然言語の柔軟さ**と **業務ロジックの決定性** を分けています。
+
+## Supabase 方針
+
+- 認証は Supabase Auth を使用
+- 予約系の書き込みは Postgres RPC でトランザクション化
+- public read 用 view は `security_invoker` を使用
+- RLS は `auth.uid()` を `select auth.uid()` 形式で最適化
+- SQLite はローカル test fixture 用にのみ残し、実運用パスは Supabase に統一
 
 ## 主な機能
 
@@ -69,44 +79,14 @@ User -> FastAPI Host -> OpenAI LLM -> MCP Client -> MCP Server -> SQLite / Supab
 - ホームエリア / 移動手段 / 最大移動時間を使った提案
 - 予約作成 / 仮押さえ / 確認 / キャンセル
 - 文脈を引き継ぐ会話メモリ
-- Supabase Auth 対応
-- Supabase Postgres / RLS への段階的移行
-
-## 会話体験の例
-
-```text
-User: nearest to adachi ku
-Assistant: The nearest full course is Wakasu Golf Links.
-
-User: tomorrow 12:00 3-4 players
-Assistant: 日付・時間・人数・コース・天気をまとめて確認
-
-User: how will be the weather that day
-Assistant: 直前の course/date/time を引き継いで回答
-
-User: book the second one
-Assistant: 直前に提示した候補の 2 番目を解決して予約フローへ進む
-```
-
-この動きは意図的です。ステートレスなデモチャットではなく、**コールセンターの担当者に近い振る舞い**を目指しています。
-
-## URL ルーティング
-
-フロントエンドは URL ベースで各画面に遷移できます。
-
-- `/login`
-- `/signup`
-- `/assistant`
-- `/tee-times`
-- `/my-golf`
-- `/settings`
+- 日本向けの JPY 価格表示
 
 ## ローカル実行
 
 ### 1. 依存関係のインストール
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
@@ -123,10 +103,24 @@ cp .env.example .env
 最低限、以下を設定します。
 
 - `OPENAI_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_PUBLISHABLE_KEY`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
-### 3. 起動
+Redis を使う場合のみ追加で設定します。
+
+- `CONVERSATION_BACKEND=redis`
+- `REDIS_URL=redis://localhost:6379/0`
+
+### 3. Supabase schema の反映
+
+```bash
+supabase db push
+```
+
+### 4. 起動
 
 バックエンド:
 
@@ -143,8 +137,6 @@ npm run dev
 
 ## Docker 実行
 
-フロントエンド・バックエンド両方の Dockerfile を追加しています。
-
 - `backend/Dockerfile`
 - `frontend/Dockerfile`
 - `docker-compose.yml`
@@ -159,39 +151,28 @@ docker compose up --build
 
 - Frontend: `http://localhost:3000`
 - Backend: `http://localhost:8000`
+- Redis: `redis://localhost:6379`
 
-補足:
+## Supabase マイグレーション
 
-- フロントエンドは Nginx で配信し、`/chat`, `/auth`, `/api`, `/health` を backend に proxy します
-- フロントエンドの Supabase 公開キーは build 時に埋め込まれるため、`.env` に `NEXT_PUBLIC_...` 系を入れてから build してください
+- `supabase/migrations/20260416183000_init_golf_reservation.sql`
+- `supabase/migrations/20260416190000_runtime_views_and_rls.sql`
+- `supabase/migrations/20260416210000_complete_supabase_cutover.sql`
 
-## Supabase 移行状況
+最後の migration では以下を行っています。
 
-- `supabase/` は初期化済み
-- 初期スキーマ:
-  - `supabase/migrations/20260416183000_init_golf_reservation.sql`
-- ランタイム向け追加:
-  - `supabase/migrations/20260416190000_runtime_views_and_rls.sql`
-- フロントエンドは Supabase Auth を利用
-- バックエンドは Supabase JWT を受け取れる
-- 一部の public read API は Supabase REST を優先利用
-
-ただし、現時点ではまだ **完全な Supabase 切り替え**ではありません。予約系・MCP クエリの多くはまだ SQLite ベースです。
+- `security_invoker` view への修正
+- `reservation_details` view の追加
+- performance advisor に合わせた RLS policy 修正
+- 予約書き込み用 RPC の追加
+- サンプルコース / ティータイム seed
 
 ## 設計上のトレードオフ
 
-- ローカル開発とテスト速度のために SQLite を残している
-- 一方で Supabase Auth / Postgres / RLS を先に入れ、移行経路を可視化している
-- プロンプトだけに頼らず、会話メモリは明示的な構造化 state で扱っている
-- 一気に書き換えるのではなく、壊さず段階的に移す方針を取っている
-
-## 本番化するなら次にやること
-
-1. 予約作成・更新・キャンセルを Supabase Postgres に完全移行
-2. SQLite 依存の MCP クエリを Postgres 向けに書き換え
-3. ダミーデータではなく実データ連携に置き換え
-4. in-memory の会話状態を永続化
-5. ログ、監視、rate limit、バックグラウンドジョブを追加
+- public read は Supabase view + RLS
+- 複数テーブル更新が必要な予約処理は RPC で Postgres 側に寄せる
+- conversation state は backend 側で持ち、認証と予約データは Supabase に任せる
+- SQLite はテストとオフライン fixture に限定
 
 ## ディレクトリ構成
 

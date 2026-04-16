@@ -25,6 +25,12 @@ def setup_db(tmp_path):
     yield
     os.environ.pop("DATABASE_PATH", None)
     os.environ.pop("OPENAI_API_KEY", None)
+    os.environ.pop("SUPABASE_PROJECT_REF", None)
+    os.environ.pop("SUPABASE_URL", None)
+    os.environ.pop("SUPABASE_PUBLISHABLE_KEY", None)
+    os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
+    os.environ.pop("NEXT_PUBLIC_SUPABASE_URL", None)
+    os.environ.pop("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", None)
 
 
 class TestHealthEndpoint:
@@ -114,6 +120,34 @@ class TestAuthEndpoint:
         assert profile.json()["phone"] == "070-0000-0000"
 
     @pytest.mark.asyncio
+    async def test_auth_me_returns_local_user_profile(self):
+        from backend.host.app import app
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            register = await client.post(
+                "/auth/register",
+                json={
+                    "name": "Local User",
+                    "email": "local-user@example.com",
+                    "password": "secret123",
+                    "home_area": "Adachi-ku",
+                    "travel_mode": "train",
+                    "max_travel_minutes": 60,
+                },
+            )
+            token = register.json()["access_token"]
+            response = await client.get(
+                "/auth/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["email"] == "local-user@example.com"
+        assert payload["name"] == "Local User"
+
+    @pytest.mark.asyncio
     async def test_auth_me_accepts_supabase_jwt_and_creates_local_user(self, monkeypatch):
         from backend.host.app import app
 
@@ -146,7 +180,7 @@ class TestAuthEndpoint:
         from backend.host.app import app
 
         monkeypatch.setenv("SUPABASE_URL", "https://dvtktsuzxqssksbnvjnn.supabase.co")
-        monkeypatch.setenv("SUPABASE_ANON_KEY", "sb_publishable_test")
+        monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test")
 
         transport = ASGITransport(app=app)
         with patch("backend.host.auth.jwt.decode", side_effect=JWTError("invalid local token")), \
@@ -203,6 +237,7 @@ class TestChatEndpoint:
 
             mock_llm.chat.return_value = mock_message
             mock_llm.parse_tool_calls.return_value = []
+            mock_mcp.list_openai_tools = AsyncMock(return_value=[])
 
             # Mock MCP connect as async context manager
             mock_session = AsyncMock()
@@ -233,6 +268,7 @@ class TestChatEndpoint:
                 "assessment": "good",
                 "message": "Conditions look good for golf: partly cloudy, 20C, 10% rain chance, 8 km/h wind.",
             }
+            mock_mcp.list_openai_tools = AsyncMock(return_value=[])
             mock_session = AsyncMock()
             mock_mcp.connect.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_mcp.connect.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -273,6 +309,7 @@ class TestChatEndpoint:
 
             mock_llm.chat.return_value = mock_message
             mock_llm.parse_tool_calls.return_value = []
+            mock_mcp.list_openai_tools = AsyncMock(return_value=[])
             mock_weather.return_value = {
                 "assessment": "good",
                 "message": "Conditions look good for golf: partly cloudy, 20C, 10% rain chance, 8 km/h wind.",
@@ -339,6 +376,7 @@ class TestChatEndpoint:
                 "assessment": "mixed",
                 "message": "Conditions are playable but not ideal: moderate rain, 18C, 40% rain chance, 18 km/h wind.",
             }
+            mock_mcp.list_openai_tools = AsyncMock(return_value=[])
 
             mock_session = AsyncMock()
             mock_mcp.connect.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -358,12 +396,37 @@ class TestChatEndpoint:
 
             assert response.status_code == 200
             assert response.json()["reply"] == "Please confirm your reservation."
-
             second_chat_messages = mock_llm.chat.call_args_list[1].args[0]
             tool_messages = [message for message in second_chat_messages if message.get("role") == "tool"]
             assert tool_messages
             assert "Weather re-check:" in tool_messages[-1]["content"]
             assert '"weather_check":' in tool_messages[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_chat_returns_502_for_malformed_tool_call(self):
+        from backend.host.app import app
+        from backend.host.llm import ToolCallParseError
+
+        malformed_message = MagicMock()
+        malformed_message.tool_calls = [MagicMock()]
+
+        with patch("backend.host.app.llm_client") as mock_llm, \
+             patch("backend.host.app.mcp_client") as mock_mcp:
+
+            mock_llm.chat.return_value = malformed_message
+            mock_llm.parse_tool_calls.side_effect = ToolCallParseError("bad tool payload")
+            mock_mcp.list_openai_tools = AsyncMock(return_value=[{"type": "function", "function": {"name": "tool_search_tee_times", "description": "", "parameters": {"type": "object", "properties": {}}}}])
+
+            mock_session = AsyncMock()
+            mock_mcp.connect.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_mcp.connect.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.post("/chat", json={"message": "book a tee time"})
+
+        assert response.status_code == 502
+        assert response.json()["detail"] == "The language model returned an invalid tool call."
 
     @pytest.mark.asyncio
     async def test_chat_reuses_active_course_for_weather_follow_up(self, monkeypatch):
@@ -393,6 +456,7 @@ class TestChatEndpoint:
 
             mock_llm.chat.side_effect = [first, third]
             mock_llm.parse_tool_calls.side_effect = [[], []]
+            mock_mcp.list_openai_tools = AsyncMock(return_value=[])
 
             mock_session = AsyncMock()
             mock_mcp.connect.return_value.__aenter__ = AsyncMock(return_value=mock_session)
@@ -434,9 +498,9 @@ class TestChatEndpoint:
         first = MagicMock()
         first.content = (
             "Here are tee times at Wakasu Golf Links for tomorrow:\n"
-            "1. **12:00 PM** - $123.00 per player\n"
-            "2. **12:30 PM** - $123.00 per player\n"
-            "3. **1:00 PM** - $123.00 per player"
+            "1. **12:00 PM** - JPY 12,300 per player\n"
+            "2. **12:30 PM** - JPY 12,300 per player\n"
+            "3. **1:00 PM** - JPY 12,300 per player"
         )
         first.tool_calls = None
         first.model_dump.return_value = {"role": "assistant", "content": first.content, "tool_calls": None}
@@ -446,6 +510,7 @@ class TestChatEndpoint:
 
             mock_llm.chat.side_effect = [first]
             mock_llm.parse_tool_calls.side_effect = [[]]
+            mock_mcp.list_openai_tools = AsyncMock(return_value=[])
 
             mock_session = AsyncMock()
             mock_mcp.connect.return_value.__aenter__ = AsyncMock(return_value=mock_session)

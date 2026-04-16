@@ -29,6 +29,7 @@ class MCPClient:
         self._session: Optional[ClientSession] = None
         self._stdio_context = None
         self._session_context = None
+        self._openai_tool_cache: Optional[list[dict[str, Any]]] = None
 
     @asynccontextmanager
     async def connect(self) -> AsyncGenerator[ClientSession, None]:
@@ -85,3 +86,48 @@ class MCPClient:
         except Exception as e:
             logger.error(f"Tool {tool_name} failed: {e}")
             return json.dumps({"error": f"Tool execution failed: {str(e)}"})
+
+    async def list_openai_tools(self, session: ClientSession) -> list[dict[str, Any]]:
+        """Discover MCP tools and convert them to OpenAI tool definitions."""
+        if self._openai_tool_cache is not None:
+            return self._openai_tool_cache
+
+        result = await session.list_tools()
+        tools = getattr(result, "tools", None)
+        if tools is None and hasattr(result, "model_dump"):
+            tools = result.model_dump().get("tools", [])
+
+        if not tools:
+            raise RuntimeError("MCP server returned no tools during discovery.")
+
+        discovered_tools = [self._normalize_tool_definition(tool) for tool in tools]
+        self._openai_tool_cache = discovered_tools
+        logger.info("Discovered %s MCP tools.", len(discovered_tools))
+        return discovered_tools
+
+    def _normalize_tool_definition(self, tool: Any) -> dict[str, Any]:
+        if hasattr(tool, "model_dump"):
+            payload = tool.model_dump(by_alias=True)
+        elif isinstance(tool, dict):
+            payload = dict(tool)
+        else:
+            payload = {
+                "name": getattr(tool, "name", None),
+                "description": getattr(tool, "description", ""),
+                "inputSchema": getattr(tool, "inputSchema", None) or getattr(tool, "input_schema", None),
+            }
+
+        name = payload.get("name")
+        if not name:
+            raise RuntimeError(f"Received invalid MCP tool payload: {payload}")
+
+        return {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": payload.get("description") or "",
+                "parameters": payload.get("inputSchema")
+                or payload.get("input_schema")
+                or {"type": "object", "properties": {}},
+            },
+        }

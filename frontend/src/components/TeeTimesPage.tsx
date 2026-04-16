@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Search, Bell, User, MapPin, Star, Lock, SunMedium, CloudSun, CloudRain } from 'lucide-react'
 import ConfirmModal from './ConfirmModal'
 import { useAuth } from '../context/AuthContext'
+import { formatJPY } from '../lib/currency'
 import { fetchWeatherForTeeTime, type WeatherSummary } from '../lib/weather'
 import { fetchRecommendations, type RecommendedTeeTime } from '../lib/recommendations'
 
@@ -287,7 +288,7 @@ function RecommendationCard({ recommendation }: { recommendation: RecommendedTee
           <p className="text-sm font-bold text-gray-900">{teeTime.course_name}</p>
           <p className="text-xs text-gray-500 mt-0.5">{formatDate(teeTime.tee_datetime)}</p>
         </div>
-        <span className="text-xs font-semibold text-[#1a3d2b]">${teeTime.price_per_player.toFixed(0)}</span>
+        <span className="text-xs font-semibold text-[#1a3d2b]">{formatJPY(teeTime.price_per_player)}</span>
       </div>
       <div className={`inline-flex mt-3 items-center gap-1.5 rounded-full border px-2.5 py-1 ${weatherTone}`}>
         <WeatherIcon size={11} />
@@ -369,7 +370,7 @@ function CourseCard({
           </div>
           {course.min_price && (
             <span className="text-xs text-gray-400 font-medium shrink-0">
-              from ${course.min_price.toFixed(0)}
+              from {formatJPY(course.min_price)}
             </span>
           )}
         </div>

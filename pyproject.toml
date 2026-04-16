@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.5.0",
     "python-dotenv>=1.0.0",
     "httpx>=0.25.0",
+    "redis>=5.0.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
     "python-multipart>=0.0.9",
@@ -28,6 +29,9 @@ dev = [
 [build-system]
 requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["backend*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
