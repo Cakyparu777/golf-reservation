@@ -11,6 +11,7 @@ from backend.mcp_server.db.queries import (
     API_SEARCH_TEE_TIMES,
     API_SEARCH_TEE_TIMES_BY_COURSE,
 )
+from backend.services.supabase import is_supabase_rest_configured, list_tee_times as list_supabase_tee_times
 
 router = APIRouter(prefix="/api/tee-times", tags=["tee-times"])
 
@@ -32,6 +33,25 @@ def search_tee_times(
     num_players: int = Query(1, ge=1, le=4),
     limit: int = Query(20, ge=1, le=100),
 ):
+    if is_supabase_rest_configured():
+        try:
+            rows = list_supabase_tee_times(course_id=course_id, num_players=num_players, limit=limit)
+            return [
+                TeeTimeOut(
+                    id=r["id"],
+                    course_id=r["course_id"],
+                    course_name=r["course_name"],
+                    course_location=r["course_location"],
+                    tee_datetime=r["tee_datetime"],
+                    available_slots=r["available_slots"],
+                    max_players=r["max_players"],
+                    price_per_player=r["price_per_player"],
+                )
+                for r in rows
+            ]
+        except Exception:
+            pass
+
     with get_connection() as conn:
         if course_id:
             rows = conn.execute(

@@ -1,0 +1,2 @@
+-- Optional Supabase seed file.
+-- Keep empty for now; the app still uses Python-based sample seeding locally.

@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from jose import JWTError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -111,6 +112,72 @@ class TestAuthEndpoint:
         assert update.json()["max_travel_minutes"] == 90
         assert profile.status_code == 200
         assert profile.json()["phone"] == "070-0000-0000"
+
+    @pytest.mark.asyncio
+    async def test_auth_me_accepts_supabase_jwt_and_creates_local_user(self, monkeypatch):
+        from backend.host.app import app
+
+        monkeypatch.setenv("SUPABASE_PROJECT_REF", "dvtktsuzxqssksbnvjnn")
+        monkeypatch.setattr("backend.host.auth._SUPABASE_JWKS_CACHE", None)
+
+        transport = ASGITransport(app=app)
+        with patch("backend.host.auth.jwt.decode", side_effect=JWTError("invalid local token")), \
+             patch(
+                 "backend.host.auth._verify_supabase_token",
+                 return_value={
+                     "sub": "1c2d3e4f-5555-6666-7777-888899990000",
+                     "email": "supabase-user@example.com",
+                     "user_metadata": {"full_name": "Supabase User"},
+                 },
+             ):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get(
+                    "/auth/me",
+                    headers={"Authorization": "Bearer supabase.jwt.token"},
+                )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["email"] == "supabase-user@example.com"
+        assert payload["name"] == "Supabase User"
+
+    @pytest.mark.asyncio
+    async def test_auth_me_uses_supabase_profile_service_when_configured(self, monkeypatch):
+        from backend.host.app import app
+
+        monkeypatch.setenv("SUPABASE_URL", "https://dvtktsuzxqssksbnvjnn.supabase.co")
+        monkeypatch.setenv("SUPABASE_ANON_KEY", "sb_publishable_test")
+
+        transport = ASGITransport(app=app)
+        with patch("backend.host.auth.jwt.decode", side_effect=JWTError("invalid local token")), \
+             patch(
+                 "backend.host.auth._verify_supabase_token",
+                 return_value={
+                     "sub": "11111111-2222-3333-4444-555555555555",
+                     "email": "profiled@example.com",
+                     "user_metadata": {"full_name": "Profiled User"},
+                 },
+             ), \
+             patch(
+                 "backend.host.routes.auth_router.get_or_create_user_profile",
+                 return_value={
+                     "email": "profiled@example.com",
+                     "name": "Profiled User",
+                     "phone": None,
+                     "home_area": "Adachi-ku",
+                     "travel_mode": "train",
+                     "max_travel_minutes": 60,
+                 },
+             ) as mock_profile:
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                response = await client.get(
+                    "/auth/me",
+                    headers={"Authorization": "Bearer supabase.jwt.token"},
+                )
+
+        assert response.status_code == 200
+        assert response.json()["home_area"] == "Adachi-ku"
+        mock_profile.assert_called_once()
 
 
 class TestChatEndpoint:

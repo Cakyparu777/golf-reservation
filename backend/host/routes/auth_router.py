@@ -5,14 +5,24 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 
-from backend.host.auth import create_access_token, get_current_user_id, hash_password, verify_password
+from backend.host.auth import (
+    create_access_token,
+    get_current_access_token,
+    get_current_auth_payload,
+    get_current_user_id,
+    hash_password,
+    is_supabase_auth_payload,
+    verify_password,
+)
 from backend.mcp_server.db.connection import get_connection
 from backend.mcp_server.db.queries import (
     GET_USER_BY_EMAIL,
     GET_USER_BY_ID,
     INSERT_USER_AUTH,
     UPDATE_USER_PROFILE,
+    INSERT_USER,
 )
+from backend.services.supabase import get_or_create_user_profile, is_supabase_rest_configured, upsert_user_profile
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -56,6 +66,23 @@ def _user_payload(user) -> dict:
         "max_travel_minutes": user["max_travel_minutes"],
         "phone": user["phone"],
     }
+
+
+def _sync_local_user_profile(profile: dict) -> dict:
+    with get_connection() as conn:
+        conn.execute(
+            INSERT_USER,
+            {
+                "name": profile["name"],
+                "email": profile["email"],
+                "phone": profile.get("phone"),
+                "home_area": profile.get("home_area"),
+                "travel_mode": profile.get("travel_mode") or "train",
+                "max_travel_minutes": profile.get("max_travel_minutes") or 60,
+            },
+        )
+        user = conn.execute(GET_USER_BY_EMAIL, {"email": profile["email"]}).fetchone()
+    return _user_payload(user)
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
@@ -104,7 +131,15 @@ def login(body: LoginRequest):
 
 
 @router.get("/me")
-def get_me(user_id: int = Depends(get_current_user_id)):
+def get_me(
+    user_id: int = Depends(get_current_user_id),
+    payload: dict = Depends(get_current_auth_payload),
+    access_token: str = Depends(get_current_access_token),
+):
+    if is_supabase_auth_payload(payload) and is_supabase_rest_configured():
+        profile = get_or_create_user_profile(access_token, payload)
+        return _sync_local_user_profile(profile)
+
     with get_connection() as conn:
         user = conn.execute(GET_USER_BY_ID, {"user_id": user_id}).fetchone()
     if not user:
@@ -113,7 +148,26 @@ def get_me(user_id: int = Depends(get_current_user_id)):
 
 
 @router.patch("/me")
-def update_me(body: ProfileUpdateRequest, user_id: int = Depends(get_current_user_id)):
+def update_me(
+    body: ProfileUpdateRequest,
+    user_id: int = Depends(get_current_user_id),
+    payload: dict = Depends(get_current_auth_payload),
+    access_token: str = Depends(get_current_access_token),
+):
+    if is_supabase_auth_payload(payload) and is_supabase_rest_configured():
+        profile = upsert_user_profile(
+            access_token,
+            payload,
+            {
+                "name": body.name,
+                "phone": body.phone,
+                "home_area": body.home_area,
+                "travel_mode": body.travel_mode,
+                "max_travel_minutes": body.max_travel_minutes,
+            },
+        )
+        return _sync_local_user_profile(profile)
+
     with get_connection() as conn:
         updated = conn.execute(
             UPDATE_USER_PROFILE,

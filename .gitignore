@@ -1,5 +1,12 @@
 # Environment
 .env
+.env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+.agents
+.claude
 
 # Python
 __pycache__/
@@ -17,6 +24,7 @@ env/
 
 # Database
 data/*.db
+data/*.sqlite*
 
 # IDE
 .vscode/
@@ -45,3 +53,7 @@ yarn-error.log*
 
 # Logs
 *.log
+
+# Supabase / MCP local state
+supabase/.temp/
+supabase/.branches/
