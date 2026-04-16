@@ -23,6 +23,7 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
   const { token } = useAuth()
   const [teeTimes, setTeeTimes] = useState<TeeTime[]>([])
   const [selected, setSelected] = useState<TeeTime | null>(null)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [numPlayers, setNumPlayers] = useState(1)
   const [loading, setLoading] = useState(false)
   const [confirmed, setConfirmed] = useState<{ confirmation_number: string; total_price: number } | null>(null)
@@ -32,12 +33,16 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
   useEffect(() => {
     let cancelled = false
     setError('')
-    fetch(`/api/tee-times?course_id=${course.id}&num_players=${numPlayers}&limit=10`)
+    fetch(`/api/tee-times?course_id=${course.id}&num_players=${numPlayers}&limit=100`)
       .then((r) => expectJson<TeeTime[]>(r, 'Failed to load tee times.'))
       .then((data: TeeTime[]) => {
         if (cancelled) return
         const nextTeeTimes = Array.isArray(data) ? data : []
         setTeeTimes(nextTeeTimes)
+        setSelectedDate((currentDate) => {
+          const hasCurrentDate = currentDate && nextTeeTimes.some((tt) => teeDateKey(tt.tee_datetime) === currentDate)
+          return hasCurrentDate ? currentDate : (nextTeeTimes[0] ? teeDateKey(nextTeeTimes[0].tee_datetime) : null)
+        })
         setSelected((current) => nextTeeTimes.find((tt) => tt.id === current?.id) || nextTeeTimes[0] || null)
         if (nextTeeTimes.length === 0) {
           setError('No tee times are available for that party size right now.')
@@ -54,6 +59,21 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
       cancelled = true
     }
   }, [course.id, numPlayers])
+
+  useEffect(() => {
+    if (!selectedDate) {
+      setSelected(teeTimes[0] || null)
+      return
+    }
+
+    const matchingTimes = teeTimes.filter((tt) => teeDateKey(tt.tee_datetime) === selectedDate)
+    if (matchingTimes.length === 0) {
+      setSelected(null)
+      return
+    }
+
+    setSelected((current) => matchingTimes.find((tt) => tt.id === current?.id) || matchingTimes[0])
+  }, [selectedDate, teeTimes])
 
   useEffect(() => {
     if (!selected) {
@@ -84,6 +104,11 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
     return { date, time }
   }
 
+  function formatDateLabel(dateKey: string) {
+    const d = new Date(`${dateKey}T00:00:00`)
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  }
+
   async function handleConfirm() {
     if (!selected) return
     setError('')
@@ -108,6 +133,12 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
 
   const dt = selected ? formatDateTime(selected.tee_datetime) : null
   const total = selected ? selected.price_per_player * numPlayers : 0
+  const availableDates = Array.from(new Set(teeTimes.map((tt) => teeDateKey(tt.tee_datetime))))
+  const minAvailableDate = availableDates[0]
+  const maxAvailableDate = availableDates[availableDates.length - 1]
+  const visibleTeeTimes = selectedDate
+    ? teeTimes.filter((tt) => teeDateKey(tt.tee_datetime) === selectedDate)
+    : teeTimes
   const WeatherIcon =
     weather?.assessment === 'good'
       ? SunMedium
@@ -188,15 +219,42 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
             </div>
           ) : (
             <div className="animate-slideUp stagger-2 flex-1">
+              {/* Date selector */}
+              {availableDates.length > 0 && (
+                <div className="mt-6">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Select Date</p>
+                  <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-soft">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-gold-50 border border-gold-100 flex items-center justify-center shrink-0">
+                        <Calendar size={16} className="text-gold-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Booking Date</p>
+                        <input
+                          type="date"
+                          value={selectedDate ?? ''}
+                          min={minAvailableDate}
+                          max={maxAvailableDate}
+                          onChange={(event) => setSelectedDate(event.target.value)}
+                          className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none"
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-gray-500">
+                      Available booking window: {formatDateLabel(minAvailableDate)} to {formatDateLabel(maxAvailableDate)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Tee time selector */}
-              {teeTimes.length > 0 && (
+              {visibleTeeTimes.length > 0 && (
                 <div className="mt-6">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Select Tee Time</p>
                   <div className="flex gap-2.5 flex-wrap">
-                    {teeTimes.slice(0, 6).map((tt) => {
+                    {visibleTeeTimes.map((tt) => {
                       const d = new Date(tt.tee_datetime)
                       const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
-                      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                       const isSelected = selected?.id === tt.id
                       return (
                         <button
@@ -208,7 +266,10 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
                               : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 hover:-translate-y-0.5 relative z-10'
                           }`}
                         >
-                          {dateStr} <span className={isSelected ? 'text-green-200 ml-1' : 'text-gray-400 ml-1'}>{timeStr}</span>
+                          <span className={isSelected ? 'text-green-200' : 'text-gray-700'}>{timeStr}</span>
+                          <span className={`ml-2 text-[10px] font-bold ${isSelected ? 'text-green-100' : 'text-gray-400'}`}>
+                            {tt.available_slots} spots
+                          </span>
                         </button>
                       )
                     })}
@@ -218,8 +279,25 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
 
               {dt && (
                 <div className="grid grid-cols-2 gap-x-6 gap-y-5 mt-8 bg-surface-muted border border-gray-100 rounded-2xl p-5">
-                  <Detail icon={Calendar} label="Date" value={dt.date} />
-                  <Detail icon={Clock} label="Time" value={dt.time} />
+                  <DateDetail
+                    value={selectedDate ?? ''}
+                    min={minAvailableDate}
+                    max={maxAvailableDate}
+                    onChange={(value) => setSelectedDate(value)}
+                  />
+                  <SelectDetail
+                    icon={Clock}
+                    label="Time"
+                    value={selected ? String(selected.id) : ''}
+                    onChange={(value) => {
+                      const next = visibleTeeTimes.find((tt) => String(tt.id) === value)
+                      if (next) setSelected(next)
+                    }}
+                    options={visibleTeeTimes.map((tt) => ({
+                      value: String(tt.id),
+                      label: new Date(tt.tee_datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                    }))}
+                  />
                   <div>
                     <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest">Party Size</p>
                     <div className="flex items-center gap-2 mt-1.5 focus-within:ring-2 focus-within:ring-green-900/10 rounded-lg pr-2 transition-shadow">
@@ -279,6 +357,12 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
                 </div>
               )}
 
+              {!error && selectedDate && visibleTeeTimes.length === 0 && (
+                <div className="mt-4 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 px-4 py-3 rounded-xl animate-slideDown">
+                  No tee times are available on {formatDateLabel(selectedDate)} for {numPlayers} {numPlayers === 1 ? 'player' : 'players'}. Try another date or party size.
+                </div>
+              )}
+
               {/* Footer */}
               <div className="mt-8">
                 <div className="flex items-end justify-between mb-4">
@@ -317,6 +401,10 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
   )
 }
 
+function teeDateKey(iso: string) {
+  return iso.slice(0, 10)
+}
+
 function Detail({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
     <div>
@@ -326,6 +414,73 @@ function Detail({ icon: Icon, label, value }: { icon: React.ElementType; label: 
           <Icon size={12} className="text-gray-500" />
         </div>
         <p className="text-sm font-bold text-gray-900 truncate">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+function DateDetail({
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  value: string
+  min?: string
+  max?: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest mb-1.5">Date</p>
+      <div className="flex items-center gap-2 mt-1.5 focus-within:ring-2 focus-within:ring-green-900/10 rounded-lg pr-2 transition-shadow">
+        <div className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center shrink-0">
+          <Calendar size={12} className="text-gray-500" />
+        </div>
+        <input
+          type="date"
+          value={value}
+          min={min}
+          max={max}
+          onChange={(event) => onChange(event.target.value)}
+          className="text-sm font-bold text-gray-900 bg-transparent outline-none w-full"
+        />
+      </div>
+    </div>
+  )
+}
+
+function SelectDetail({
+  icon: Icon,
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  icon: React.ElementType
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: Array<{ value: string; label: string }>
+}) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest mb-1.5">{label}</p>
+      <div className="flex items-center gap-2 mt-1.5 focus-within:ring-2 focus-within:ring-green-900/10 rounded-lg pr-2 transition-shadow">
+        <div className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center shrink-0">
+          <Icon size={12} className="text-gray-500" />
+        </div>
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="text-sm font-bold text-gray-900 bg-transparent outline-none w-full"
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   )
