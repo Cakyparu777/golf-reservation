@@ -294,6 +294,123 @@ class TestChatEndpoint:
         assert response.status_code == 401
 
     @pytest.mark.asyncio
+    async def test_chat_uses_saved_profile_context_when_request_omits_it(self):
+        from backend.host.app import app
+
+        with patch("backend.host.app.find_nearest_courses") as mock_nearest, \
+             patch("backend.host.app.llm_client") as mock_llm, \
+             patch("backend.host.app.mcp_client") as mock_mcp:
+
+            mock_nearest.return_value = {
+                "user_area": "Adachi-ku",
+                "travel_mode": "train",
+                "nearest_courses": [
+                    {
+                        "id": 1,
+                        "name": "Wakasu Golf Links",
+                        "location": "Koto City, Tokyo",
+                        "travel_minutes": 29,
+                    }
+                ],
+            }
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                headers = await auth_headers(client)
+                response = await client.post(
+                    "/chat",
+                    json={"message": "where is the nearest golf course to me"},
+                    headers=headers,
+                )
+
+            assert response.status_code == 200
+            mock_nearest.assert_called_once()
+            assert mock_nearest.call_args.kwargs["user_area"] == "Adachi-ku"
+            mock_llm.chat.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_chat_skips_profile_lookup_when_request_already_has_profile(self):
+        from backend.host.app import app
+
+        mock_message = MagicMock()
+        mock_message.content = "Using provided profile details."
+        mock_message.tool_calls = None
+        mock_message.model_dump.return_value = {
+            "role": "assistant",
+            "content": mock_message.content,
+            "tool_calls": None,
+        }
+
+        with patch("backend.host.app.llm_client") as mock_llm, \
+             patch("backend.host.app.mcp_client") as mock_mcp, \
+             patch("backend.host.app._load_authenticated_profile_context") as mock_profile_loader:
+
+            mock_llm.chat.return_value = mock_message
+            mock_llm.parse_tool_calls.return_value = []
+            mock_mcp.list_openai_tools = AsyncMock(return_value=[])
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                headers = await auth_headers(client)
+                response = await client.post(
+                    "/chat",
+                    json={
+                        "message": "where is the nearest golf course to me",
+                        "user_name": "Chat User",
+                        "home_area": "Adachi-ku",
+                        "travel_mode": "train",
+                        "max_travel_minutes": 60,
+                    },
+                    headers=headers,
+                )
+
+            assert response.status_code == 200
+            mock_profile_loader.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_chat_returns_nearest_course_from_saved_home_area_without_llm(self):
+        from backend.host.app import app
+
+        with patch("backend.host.app.find_nearest_courses") as mock_nearest, \
+             patch("backend.host.app.llm_client") as mock_llm, \
+             patch("backend.host.app.mcp_client") as mock_mcp:
+
+            mock_nearest.return_value = {
+                "user_area": "Adachi-ku",
+                "travel_mode": "train",
+                "nearest_courses": [
+                    {
+                        "id": 1,
+                        "name": "Wakasu Golf Links",
+                        "location": "Koto City, Tokyo",
+                        "travel_minutes": 29,
+                    },
+                    {
+                        "id": 2,
+                        "name": "Tokyo Kokusai Golf Club",
+                        "location": "Machida, Tokyo",
+                        "travel_minutes": 55,
+                    },
+                ],
+            }
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                headers = await auth_headers(client)
+                response = await client.post(
+                    "/chat",
+                    json={"message": "what's the nearest golf course to me"},
+                    headers=headers,
+                )
+
+            assert response.status_code == 200
+            payload = response.json()
+            assert "Wakasu Golf Links" in payload["reply"]
+            assert "Adachi-ku" in payload["reply"]
+            assert payload["tool_calls_made"] == []
+            mock_llm.chat.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_chat_requests_confirmation_before_booking(self):
         from backend.host.app import app
 

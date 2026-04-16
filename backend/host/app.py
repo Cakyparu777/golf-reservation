@@ -25,7 +25,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import conversation
-from .auth import get_current_auth_payload
+from .auth import get_current_access_token, get_current_auth_payload, get_current_user_id, is_supabase_auth_payload
 from .confirmation import (
     build_confirmation_prompt,
     build_confirmation_system_note,
@@ -48,9 +48,13 @@ from .session_context import (
     extract_message_context,
     extract_context_from_assistant_reply,
     extract_context_from_tool_result,
+    is_nearest_course_request,
     resolve_context,
 )
-from backend.services.supabase import is_supabase_rest_configured
+from backend.mcp_server.db.connection import get_connection
+from backend.mcp_server.db.queries import GET_USER_BY_ID
+from backend.services.course_discovery import find_nearest_courses
+from backend.services.supabase import get_or_create_user_profile, is_supabase_rest_configured
 from backend.services.weather import get_weather_forecast
 
 # Load environment variables
@@ -71,11 +75,105 @@ def _cors_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
-def _authenticated_user_context(request: ChatRequest, auth_payload: dict) -> dict[str, Optional[str]]:
+def _load_authenticated_profile_context(
+    user_id: int,
+    auth_payload: dict,
+    access_token: str,
+) -> dict[str, Optional[str] | int]:
+    if is_supabase_auth_payload(auth_payload) and is_supabase_rest_configured():
+        profile = get_or_create_user_profile(access_token, auth_payload)
+        return {
+            "user_name": profile.get("name"),
+            "user_email": profile.get("email"),
+            "home_area": profile.get("home_area"),
+            "travel_mode": profile.get("travel_mode"),
+            "max_travel_minutes": profile.get("max_travel_minutes"),
+        }
+
+    with get_connection() as conn:
+        user = conn.execute(GET_USER_BY_ID, {"user_id": user_id}).fetchone()
+
+    if not user:
+        return {}
+
+    return {
+        "user_name": user["name"],
+        "user_email": user["email"],
+        "home_area": user["home_area"],
+        "travel_mode": user["travel_mode"],
+        "max_travel_minutes": user["max_travel_minutes"],
+    }
+
+
+def _profile_context_from_active_session(active_context: dict, user_email: Optional[str]) -> Optional[dict]:
+    if not active_context.get("profile_context_loaded"):
+        return None
+    if user_email and active_context.get("authenticated_user_email") != user_email:
+        return None
+    return {
+        "user_name": active_context.get("authenticated_user_name"),
+        "user_email": active_context.get("authenticated_user_email"),
+        "home_area": active_context.get("home_area"),
+        "travel_mode": active_context.get("travel_mode"),
+        "max_travel_minutes": active_context.get("max_travel_minutes"),
+    }
+
+
+def _profile_context_from_request(request: ChatRequest, auth_payload: dict) -> Optional[dict]:
+    if not all(
+        value is not None
+        for value in (request.home_area, request.travel_mode, request.max_travel_minutes)
+    ):
+        return None
+
     metadata = auth_payload.get("user_metadata") or {}
     email = str(auth_payload.get("email") or request.user_email or "").strip() or None
     name = (
         request.user_name
+        or metadata.get("full_name")
+        or metadata.get("name")
+        or (email.split("@", 1)[0] if email else None)
+    )
+    return {
+        "user_name": name,
+        "user_email": email,
+        "home_area": request.home_area,
+        "travel_mode": request.travel_mode,
+        "max_travel_minutes": request.max_travel_minutes,
+    }
+
+
+def _resolve_profile_context(
+    request: ChatRequest,
+    auth_payload: dict,
+    access_token: str,
+    user_id: int,
+    active_context: dict,
+) -> dict[str, Optional[str] | int]:
+    auth_email = str(auth_payload.get("email") or request.user_email or "").strip() or None
+
+    request_context = _profile_context_from_request(request, auth_payload)
+    if request_context is not None:
+        return request_context
+
+    cached_context = _profile_context_from_active_session(active_context, auth_email)
+    if cached_context is not None:
+        return cached_context
+
+    return _load_authenticated_profile_context(user_id, auth_payload, access_token)
+
+
+def _authenticated_user_context(request: ChatRequest, auth_payload: dict, profile_context: dict) -> dict[str, Optional[str]]:
+    metadata = auth_payload.get("user_metadata") or {}
+    email = str(
+        request.user_email
+        or profile_context.get("user_email")
+        or auth_payload.get("email")
+        or ""
+    ).strip() or None
+    name = (
+        request.user_name
+        or profile_context.get("user_name")
         or metadata.get("full_name")
         or metadata.get("name")
         or (email.split("@", 1)[0] if email else None)
@@ -132,6 +230,32 @@ def _augment_tool_result_with_weather(tool_name: str, result: str) -> str:
         payload["message"] = f"{payload.get('message', '').strip()} Weather re-check: {weather['message']}".strip()
 
     return json.dumps(payload)
+
+
+def _build_nearest_course_reply(payload: dict) -> str:
+    nearest_courses = payload.get("nearest_courses") or []
+    user_area = payload.get("user_area") or "your area"
+    travel_mode = payload.get("travel_mode") or "your preferred mode"
+
+    if not nearest_courses:
+        return (
+            f"I couldn't find a nearby golf course for {user_area} within your current travel preferences. "
+            "If you want, I can widen the search or use another area."
+        )
+
+    top = nearest_courses[0]
+    lines = [f"The nearest golf course to {user_area} is {top['name']} in {top['location']}."]
+    if top.get("travel_minutes") is not None:
+        lines.append(f"Estimated travel time is about {top['travel_minutes']} minutes by {travel_mode}.")
+
+    if len(nearest_courses) > 1:
+        lines.append("Other nearby options:")
+        for index, course in enumerate(nearest_courses[1:], start=2):
+            suffix = f" - about {course['travel_minutes']} minutes" if course.get("travel_minutes") is not None else ""
+            lines.append(f"{index}. {course['name']} ({course['location']}){suffix}")
+
+    lines.append("If you want, I can also recommend the best tee times near there. ⛳")
+    return "\n".join(lines)
 
 # ---------------------------------------------------------------------------
 # Globals
@@ -209,6 +333,8 @@ async def health_check():
 async def chat(
     request: ChatRequest,
     auth_payload: dict = Depends(get_current_auth_payload),
+    access_token: str = Depends(get_current_access_token),
+    user_id: int = Depends(get_current_user_id),
 ):
     """Main chat endpoint.
 
@@ -223,7 +349,15 @@ async def chat(
     if request.session_id and not conversation.session_exists(request.session_id):
         session_id = conversation.create_session()
 
-    authenticated_user = _authenticated_user_context(request, auth_payload)
+    active_context = conversation.get_active_context(session_id)
+    profile_context = _resolve_profile_context(
+        request,
+        auth_payload,
+        access_token,
+        user_id,
+        active_context,
+    )
+    authenticated_user = _authenticated_user_context(request, auth_payload, profile_context)
 
     # Store user context if provided
     if authenticated_user["user_name"]:
@@ -234,11 +368,12 @@ async def chat(
         )
 
     profile_updates = {
-        "home_area": request.home_area,
-        "travel_mode": request.travel_mode,
-        "max_travel_minutes": request.max_travel_minutes,
+        "home_area": request.home_area or profile_context.get("home_area"),
+        "travel_mode": request.travel_mode or profile_context.get("travel_mode"),
+        "max_travel_minutes": request.max_travel_minutes or profile_context.get("max_travel_minutes"),
         "authenticated_user_email": authenticated_user["user_email"],
         "authenticated_user_name": authenticated_user["user_name"],
+        "profile_context_loaded": True,
     }
     conversation.update_active_context(session_id, profile_updates)
 
@@ -248,6 +383,23 @@ async def chat(
     resolved_context = resolve_context(request.message, conversation.get_active_context(session_id))
     resolved_context = conversation.update_active_context(session_id, resolved_context)
     explicit_message_context = extract_message_context(request.message)
+
+    if (
+        is_nearest_course_request(request.message)
+        and resolved_context.get("location")
+        and not resolved_context.get("date")
+        and not resolved_context.get("num_players")
+    ):
+        nearest_result = find_nearest_courses(
+            user_area=str(resolved_context["location"]),
+            travel_mode=str(resolved_context.get("travel_mode") or "train"),
+            max_travel_minutes=resolved_context.get("max_travel_minutes"),
+            max_results=3,
+        )
+        nearest_result["travel_mode"] = resolved_context.get("travel_mode") or "train"
+        reply = _build_nearest_course_reply(nearest_result)
+        conversation.add_message(session_id, "assistant", reply)
+        return ChatResponse(reply=reply, session_id=session_id, tool_calls_made=[])
 
     pending_confirmation = conversation.get_pending_confirmation(session_id)
     current_details = {

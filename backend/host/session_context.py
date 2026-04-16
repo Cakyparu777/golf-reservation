@@ -206,6 +206,13 @@ def _is_nearest_self_request(message: str) -> bool:
     return ("nearest" in lowered or "closest" in lowered) and " me" in lowered
 
 
+def is_nearest_course_request(message: str) -> bool:
+    lowered = message.lower()
+    if _is_nearest_self_request(message):
+        return True
+    return "nearest" in lowered or "closest" in lowered
+
+
 def resolve_context(message: str, current_context: Optional[dict] = None, now: Optional[datetime] = None) -> dict:
     """Resolve follow-up references against the current session context."""
     existing = dict(current_context or {})
