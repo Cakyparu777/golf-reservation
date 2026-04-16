@@ -1,12 +1,9 @@
 import { useState, FormEvent } from 'react'
 import { Eye, EyeOff, Check } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-interface Props {
-  onSwitchToLogin: () => void
-}
-
-export default function SignupPage({ onSwitchToLogin }: Props) {
+export default function SignupPage() {
   const { register } = useAuth()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -226,12 +223,12 @@ export default function SignupPage({ onSwitchToLogin }: Props) {
 
           <p className="text-sm text-center text-gray-500 mt-6">
             Already have an account?{' '}
-            <button
-              onClick={onSwitchToLogin}
+            <Link
+              to="/login"
               className="text-[#1a3d2b] font-semibold hover:underline"
             >
               Sign in
-            </button>
+            </Link>
           </p>
         </div>
       </div>
