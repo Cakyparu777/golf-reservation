@@ -12,11 +12,37 @@ from jose import JWTError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+_CHAT_USER_COUNTER = 0
+
+
+async def auth_headers(client: AsyncClient) -> dict[str, str]:
+    global _CHAT_USER_COUNTER
+    _CHAT_USER_COUNTER += 1
+    response = await client.post(
+        "/auth/register",
+        json={
+            "name": f"Chat User {_CHAT_USER_COUNTER}",
+            "email": f"chat-user-{_CHAT_USER_COUNTER}@example.com",
+            "password": "secret123",
+            "home_area": "Adachi-ku",
+            "travel_mode": "train",
+            "max_travel_minutes": 60,
+        },
+    )
+    assert response.status_code == 201
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
 
 @pytest.fixture(autouse=True)
 def setup_db(tmp_path):
     """Create a temporary database for API tests."""
     path = tmp_path / "test_api.db"
+    os.environ.pop("SUPABASE_PROJECT_REF", None)
+    os.environ.pop("SUPABASE_URL", None)
+    os.environ.pop("SUPABASE_PUBLISHABLE_KEY", None)
+    os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
+    os.environ.pop("NEXT_PUBLIC_SUPABASE_URL", None)
+    os.environ.pop("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", None)
     os.environ["DATABASE_PATH"] = str(path)
     os.environ["OPENAI_API_KEY"] = "test-key"
     from backend.db.seed_data import seed_database
@@ -246,15 +272,26 @@ class TestChatEndpoint:
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
+                headers = await auth_headers(client)
                 response = await client.post("/chat", json={
                     "message": "Hello!",
-                })
+                }, headers=headers)
 
             assert response.status_code == 200
             data = response.json()
             assert "reply" in data
             assert "session_id" in data
             assert data["session_id"]  # Should not be empty
+
+    @pytest.mark.asyncio
+    async def test_chat_requires_authentication(self):
+        from backend.host.app import app
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post("/chat", json={"message": "Hello!"})
+
+        assert response.status_code == 401
 
     @pytest.mark.asyncio
     async def test_chat_requests_confirmation_before_booking(self):
@@ -275,9 +312,11 @@ class TestChatEndpoint:
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
+                headers = await auth_headers(client)
                 response = await client.post(
                     "/chat",
                     json={"message": "Please book Tama Hills Golf Course on 04/16/2026 at 12:00 for 2 players."},
+                    headers=headers,
                 )
 
             assert response.status_code == 200
@@ -321,14 +360,17 @@ class TestChatEndpoint:
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
+                headers = await auth_headers(client)
                 first = await client.post(
                     "/chat",
                     json={"message": "Please book Tama Hills Golf Course on 04/16/2026 at 12:00 for 2 players."},
+                    headers=headers,
                 )
                 session_id = first.json()["session_id"]
                 second = await client.post(
                     "/chat",
                     json={"message": "yes", "session_id": session_id},
+                    headers=headers,
                 )
 
             assert second.status_code == 200
@@ -389,9 +431,11 @@ class TestChatEndpoint:
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
+                headers = await auth_headers(client)
                 response = await client.post(
                     "/chat",
                     json={"message": "Please continue with the reservation."},
+                    headers=headers,
                 )
 
             assert response.status_code == 200
@@ -423,7 +467,8 @@ class TestChatEndpoint:
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                response = await client.post("/chat", json={"message": "book a tee time"})
+                headers = await auth_headers(client)
+                response = await client.post("/chat", json={"message": "book a tee time"}, headers=headers)
 
         assert response.status_code == 502
         assert response.json()["detail"] == "The language model returned an invalid tool call."
@@ -464,12 +509,14 @@ class TestChatEndpoint:
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                response_one = await client.post("/chat", json={"message": "nearest to adachi ku"})
+                headers = await auth_headers(client)
+                response_one = await client.post("/chat", json={"message": "nearest to adachi ku"}, headers=headers)
                 session_id = response_one.json()["session_id"]
-                await client.post("/chat", json={"message": "tomorrow 12:00 3-4 players", "session_id": session_id})
+                await client.post("/chat", json={"message": "tomorrow 12:00 3-4 players", "session_id": session_id}, headers=headers)
                 response_three = await client.post(
                     "/chat",
                     json={"message": "how will be the weather that day", "session_id": session_id},
+                    headers=headers,
                 )
 
             assert response_three.status_code == 200
@@ -518,11 +565,13 @@ class TestChatEndpoint:
 
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
-                response_one = await client.post("/chat", json={"message": "tomorrow 12:00 4 players"})
+                headers = await auth_headers(client)
+                response_one = await client.post("/chat", json={"message": "tomorrow 12:00 4 players"}, headers=headers)
                 session_id = response_one.json()["session_id"]
                 response_two = await client.post(
                     "/chat",
                     json={"message": "book the second one", "session_id": session_id},
+                    headers=headers,
                 )
 
             assert response_two.status_code == 200

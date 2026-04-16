@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Optional
 
-from backend.mcp_server.db.connection import get_connection
+from .course_catalog import list_course_names
 
 WEATHER_KEYWORDS = ("weather", "forecast", "rain", "wind", "temperature", "sunny", "cloudy")
 BOOKING_KEYWORDS = ("book", "reserve", "hold", "confirm", "tee time", "slot")
@@ -41,18 +41,10 @@ def _course_aliases(name: str) -> set[str]:
     if tokens:
         aliases.add(" ".join(tokens))
     return {alias for alias in aliases if alias}
-
-
-def _list_course_names() -> list[str]:
-    with get_connection() as conn:
-        rows = conn.execute("SELECT name FROM golf_courses ORDER BY name ASC").fetchall()
-    return [row["name"] for row in rows]
-
-
 def _extract_course_mentions(text: str) -> list[str]:
     normalized = _normalize(text)
     matches: list[tuple[int, str]] = []
-    for course_name in _list_course_names():
+    for course_name in list_course_names():
         for alias in _course_aliases(course_name):
             position = normalized.find(alias)
             if alias and position >= 0:
@@ -156,9 +148,13 @@ def _extract_location(message: str) -> Optional[str]:
 
 def _extract_option_reference(message: str) -> Optional[int]:
     lowered = message.lower()
-    numeric_match = re.search(r"\b(?:option|slot|one)?\s*(\d+)(?:st|nd|rd|th)?\b", lowered)
-    if numeric_match and ("option" in lowered or "slot" in lowered or "one" in lowered):
-        return int(numeric_match.group(1))
+    ordinal_numeric_match = re.search(r"\b(\d+)(?:st|nd|rd|th)\b", lowered)
+    if ordinal_numeric_match:
+        return int(ordinal_numeric_match.group(1))
+
+    keyword_numeric_match = re.search(r"\b(?:option|slot|number)\s*(\d+)\b", lowered)
+    if keyword_numeric_match:
+        return int(keyword_numeric_match.group(1))
 
     for word, value in ORDINAL_WORDS.items():
         if word in lowered:

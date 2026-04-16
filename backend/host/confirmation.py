@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from backend.mcp_server.db.connection import get_connection
+from .course_catalog import list_course_names
 
 BOOKING_KEYWORDS = (
     "book",
@@ -55,11 +55,7 @@ def _extract_course_name(message: str) -> Optional[str]:
     best_match: Optional[str] = None
     best_length = -1
 
-    with get_connection() as conn:
-        courses = conn.execute("SELECT name FROM golf_courses ORDER BY name ASC").fetchall()
-
-    for row in courses:
-        course_name = row["name"]
+    for course_name in list_course_names():
         for alias in _course_aliases(course_name):
             if alias and alias in normalized_message and len(alias) > best_length:
                 best_match = course_name

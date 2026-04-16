@@ -101,10 +101,18 @@ Set at minimum:
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+Before sharing the repo, also set:
+
+- `CORS_ALLOW_ORIGINS`
+
 If you want Redis-backed conversation state, also set:
 
 - `CONVERSATION_BACKEND=redis`
 - `REDIS_URL=redis://localhost:6379/0`
+
+If you want MCP tool discovery to refresh every request during development, set:
+
+- `MCP_DISABLE_TOOL_CACHE=1`
 
 ### 3. Apply Supabase migrations
 
@@ -167,6 +175,8 @@ The final migration fixes the original mixed state by:
 - write-heavy reservation flows use RPC because they need multi-table transactions
 - conversation state stays in the backend because prompt-only memory is not reliable enough for booking flows
 - SQLite is retained only for tests and offline fixtures
+- `/chat` requires authentication so the backend does not expose unauthenticated OpenAI spend
+- the MCP server is still started as a stdio subprocess per request today; for higher throughput this should move to a persistent connection or pool
 
 ## Project Structure
 

@@ -14,16 +14,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import conversation
+from .auth import get_current_auth_payload
 from .confirmation import (
     build_confirmation_prompt,
     build_confirmation_system_note,
@@ -59,6 +61,26 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("host.app")
+
+
+def _cors_origins() -> list[str]:
+    raw = os.getenv(
+        "CORS_ALLOW_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173",
+    )
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def _authenticated_user_context(request: ChatRequest, auth_payload: dict) -> dict[str, Optional[str]]:
+    metadata = auth_payload.get("user_metadata") or {}
+    email = str(auth_payload.get("email") or request.user_email or "").strip() or None
+    name = (
+        request.user_name
+        or metadata.get("full_name")
+        or metadata.get("name")
+        or (email.split("@", 1)[0] if email else None)
+    )
+    return {"user_name": name, "user_email": email}
 
 
 def _build_weather_context(details: dict) -> Optional[dict]:
@@ -156,7 +178,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten in production
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -181,7 +203,10 @@ async def health_check():
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    auth_payload: dict = Depends(get_current_auth_payload),
+):
     """Main chat endpoint.
 
     Accepts a user message, orchestrates LLM ↔ MCP tool calls,
@@ -195,18 +220,22 @@ async def chat(request: ChatRequest):
     if request.session_id and not conversation.session_exists(request.session_id):
         session_id = conversation.create_session()
 
+    authenticated_user = _authenticated_user_context(request, auth_payload)
+
     # Store user context if provided
-    if request.user_name:
+    if authenticated_user["user_name"]:
         conversation.add_message(
             session_id, "system",
-            f"The user's name is {request.user_name}."
-            + (f" Their email is {request.user_email}." if request.user_email else ""),
+            f"The user's name is {authenticated_user['user_name']}."
+            + (f" Their email is {authenticated_user['user_email']}." if authenticated_user["user_email"] else ""),
         )
 
     profile_updates = {
         "home_area": request.home_area,
         "travel_mode": request.travel_mode,
         "max_travel_minutes": request.max_travel_minutes,
+        "authenticated_user_email": authenticated_user["user_email"],
+        "authenticated_user_name": authenticated_user["user_name"],
     }
     conversation.update_active_context(session_id, profile_updates)
 
@@ -261,6 +290,7 @@ async def chat(request: ChatRequest):
         return ChatResponse(reply=reply, session_id=session_id, tool_calls_made=[])
 
     # Get conversation history
+    reply = "I'm sorry, I couldn't generate a response."
     tool_calls_made: list[str] = []
     max_iterations = 5  # Safety limit for tool-call loops
 

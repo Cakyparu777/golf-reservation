@@ -21,6 +21,12 @@ from backend.mcp_server.tools.weather import get_weather_forecast
 def seeded_db(tmp_path):
     """Create and seed a temporary database for every test."""
     path = tmp_path / "test.db"
+    os.environ.pop("SUPABASE_PROJECT_REF", None)
+    os.environ.pop("SUPABASE_URL", None)
+    os.environ.pop("SUPABASE_PUBLISHABLE_KEY", None)
+    os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
+    os.environ.pop("NEXT_PUBLIC_SUPABASE_URL", None)
+    os.environ.pop("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", None)
     os.environ["DATABASE_PATH"] = str(path)
     seed_database(path)
     yield path

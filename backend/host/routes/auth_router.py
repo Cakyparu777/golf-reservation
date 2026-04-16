@@ -67,6 +67,12 @@ def _user_payload(user) -> dict:
     }
 @router.post("/register", response_model=AuthResponse, status_code=201)
 def register(body: RegisterRequest):
+    if is_supabase_rest_configured():
+        raise HTTPException(
+            status_code=410,
+            detail="Local register is disabled when Supabase Auth is configured. Use Supabase Auth from the frontend.",
+        )
+
     with get_connection() as conn:
         existing = conn.execute(GET_USER_BY_EMAIL, {"email": body.email}).fetchone()
         if existing:
@@ -95,6 +101,12 @@ def register(body: RegisterRequest):
 
 @router.post("/login", response_model=AuthResponse)
 def login(body: LoginRequest):
+    if is_supabase_rest_configured():
+        raise HTTPException(
+            status_code=410,
+            detail="Local login is disabled when Supabase Auth is configured. Use Supabase Auth from the frontend.",
+        )
+
     with get_connection() as conn:
         user = conn.execute(GET_USER_BY_EMAIL, {"email": body.email}).fetchone()
 

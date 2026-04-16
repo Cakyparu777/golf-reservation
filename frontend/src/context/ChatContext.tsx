@@ -55,7 +55,7 @@ function now(): string {
 }
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const [messages, setMessages] = useState<ChatMessage[]>(loadMessages)
   const [sessionId, setSessionId] = useState<string | null>(
     () => sessionStorage.getItem(SESSION_KEY)
@@ -88,10 +88,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setLoading(true)
 
     try {
+      if (!token) {
+        throw new Error('Please sign in to use the assistant.')
+      }
+
       const sid = sessionStorage.getItem(SESSION_KEY)
       const res = await fetch('/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           message: text,
           session_id: sid,
@@ -120,11 +127,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         saveMessages(next)
         return next
       })
-    } catch {
+    } catch (err) {
       const errMsg: ChatMessage = {
         role: 'assistant',
-        content:
-          "I'm having trouble connecting to the server. Please ensure the backend is running on port 8000.",
+        content: err instanceof Error
+          ? err.message
+          : "I'm having trouble connecting to the server. Please ensure the backend is running on port 8000.",
         timestamp: now(),
       }
       setMessages((prev) => {
@@ -135,7 +143,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [token, user])
 
   return (
     <ChatContext.Provider

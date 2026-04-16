@@ -109,10 +109,18 @@ cp .env.example .env
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+共有前に、少なくとも以下も設定してください。
+
+- `CORS_ALLOW_ORIGINS`
+
 Redis を使う場合のみ追加で設定します。
 
 - `CONVERSATION_BACKEND=redis`
 - `REDIS_URL=redis://localhost:6379/0`
+
+開発中に MCP ツール定義キャッシュを無効化したい場合のみ設定します。
+
+- `MCP_DISABLE_TOOL_CACHE=1`
 
 ### 3. Supabase schema の反映
 
@@ -173,6 +181,8 @@ docker compose up --build
 - 複数テーブル更新が必要な予約処理は RPC で Postgres 側に寄せる
 - conversation state は backend 側で持ち、認証と予約データは Supabase に任せる
 - SQLite はテストとオフライン fixture に限定
+- `/chat` は認証必須にして OpenAI 利用を保護
+- MCP サーバー接続は現在リクエストごとに stdio subprocess を起動するため、実運用なら persistent connection / pooling に置き換える余地がある
 
 ## ディレクトリ構成
 

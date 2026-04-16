@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -30,6 +31,12 @@ class MCPClient:
         self._stdio_context = None
         self._session_context = None
         self._openai_tool_cache: Optional[list[dict[str, Any]]] = None
+        self._disable_tool_cache = os.getenv("MCP_DISABLE_TOOL_CACHE", "0").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
     @asynccontextmanager
     async def connect(self) -> AsyncGenerator[ClientSession, None]:
@@ -89,7 +96,7 @@ class MCPClient:
 
     async def list_openai_tools(self, session: ClientSession) -> list[dict[str, Any]]:
         """Discover MCP tools and convert them to OpenAI tool definitions."""
-        if self._openai_tool_cache is not None:
+        if not self._disable_tool_cache and self._openai_tool_cache is not None:
             return self._openai_tool_cache
 
         result = await session.list_tools()
@@ -101,9 +108,14 @@ class MCPClient:
             raise RuntimeError("MCP server returned no tools during discovery.")
 
         discovered_tools = [self._normalize_tool_definition(tool) for tool in tools]
-        self._openai_tool_cache = discovered_tools
+        if not self._disable_tool_cache:
+            self._openai_tool_cache = discovered_tools
         logger.info("Discovered %s MCP tools.", len(discovered_tools))
         return discovered_tools
+
+    def clear_tool_cache(self) -> None:
+        """Clear the cached OpenAI/MCP tool definitions."""
+        self._openai_tool_cache = None
 
     def _normalize_tool_definition(self, tool: Any) -> dict[str, Any]:
         if hasattr(tool, "model_dump"):
