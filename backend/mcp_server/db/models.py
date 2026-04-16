@@ -117,6 +117,21 @@ class AlternativeSuggestion(BaseModel):
     message: str = ""
 
 
+class RecommendationItem(BaseModel):
+    """A recommended tee time enriched with weather context."""
+    tee_time: TeeTime
+    weather_assessment: Optional[str] = None
+    weather_message: Optional[str] = None
+    recommendation_reason: str
+    score: float
+
+
+class RecommendationResult(BaseModel):
+    """Response shape for recommend_tee_times."""
+    recommended_tee_times: list[RecommendationItem] = Field(default_factory=list)
+    message: str = ""
+
+
 class ReservationResult(BaseModel):
     """Response shape for reservation actions."""
     reservation: Reservation

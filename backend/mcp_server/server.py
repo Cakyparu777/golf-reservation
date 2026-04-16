@@ -15,9 +15,10 @@ from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from .tools.search import search_tee_times, get_course_info, suggest_alternatives
+from .tools.search import search_tee_times, get_course_info, suggest_alternatives, recommend_tee_times
 from .tools.reservation import make_reservation, confirm_reservation, cancel_reservation
 from .tools.user import list_user_reservations
+from .tools.weather import get_weather_forecast
 
 # Route all logging to stderr so stdout stays clean for JSON-RPC
 logging.basicConfig(
@@ -88,6 +89,27 @@ def tool_get_course_info(
 
 
 @mcp.tool()
+def tool_get_weather_forecast(
+    course_name: str,
+    date: str,
+    time: str,
+) -> dict:
+    """Get forecast weather for a course at a specific date/time.
+
+    Use this before recommending or booking a tee time when the course,
+    date, and time are known. The response includes a golf-friendly
+    assessment such as good, mixed, or bad conditions.
+
+    Args:
+        course_name: Partial or full course name.
+        date: Requested date in YYYY-MM-DD format.
+        time: Requested time in HH:MM format.
+    """
+    logger.info(f"get_weather_forecast: course={course_name}, date={date}, time={time}")
+    return get_weather_forecast(course_name=course_name, date=date, time=time)
+
+
+@mcp.tool()
 def tool_suggest_alternatives(
     date: str,
     time_range_start: str,
@@ -121,6 +143,41 @@ def tool_suggest_alternatives(
         latitude=latitude,
         longitude=longitude,
         radius_km=radius_km,
+    )
+
+
+@mcp.tool()
+def tool_recommend_tee_times(
+    date: str,
+    num_players: int,
+    preferred_time: Optional[str] = None,
+    course_name: Optional[str] = None,
+    user_area: Optional[str] = None,
+    travel_mode: str = "train",
+    max_travel_minutes: Optional[int] = 60,
+    max_results: int = 3,
+) -> dict:
+    """Recommend the best tee times using weather, value, and availability.
+
+    Use this when a user asks for the best, recommended, nicest-weather,
+    or most suitable tee times.
+    """
+    logger.info(
+        "recommend_tee_times: date=%s, players=%s, preferred_time=%s, course=%s",
+        date,
+        num_players,
+        preferred_time,
+        course_name,
+    )
+    return recommend_tee_times(
+        date=date,
+        num_players=num_players,
+        preferred_time=preferred_time,
+        course_name=course_name,
+        user_area=user_area,
+        travel_mode=travel_mode,
+        max_travel_minutes=max_travel_minutes,
+        max_results=max_results,
     )
 
 

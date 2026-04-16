@@ -11,6 +11,9 @@ export default function SignupPage({ onSwitchToLogin }: Props) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [homeArea, setHomeArea] = useState('Adachi-ku')
+  const [travelMode, setTravelMode] = useState<'train' | 'car' | 'either'>('train')
+  const [maxTravelMinutes, setMaxTravelMinutes] = useState(60)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -22,7 +25,14 @@ export default function SignupPage({ onSwitchToLogin }: Props) {
     setError('')
     setLoading(true)
     try {
-      await register(name, email, password)
+      await register({
+        name,
+        email,
+        password,
+        homeArea,
+        travelMode,
+        maxTravelMinutes,
+      })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed.')
     } finally {
@@ -63,7 +73,7 @@ export default function SignupPage({ onSwitchToLogin }: Props) {
 
       {/* Right: Form */}
       <div className="flex-1 flex items-center justify-center bg-[#f4f6f0] px-6">
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-md">
           <div className="lg:hidden mb-8">
             <h1 className="text-2xl font-black text-[#1a3d2b]">Fairway Elite</h1>
           </div>
@@ -148,6 +158,61 @@ export default function SignupPage({ onSwitchToLogin }: Props) {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                Home Area or Nearest Station
+              </label>
+              <input
+                type="text"
+                required
+                value={homeArea}
+                onChange={(e) => setHomeArea(e.target.value)}
+                placeholder="Adachi-ku or Kita-Senju"
+                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-[#1a3d2b] focus:ring-2 focus:ring-[#1a3d2b]/10 transition"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                  Travel Mode
+                </label>
+                <select
+                  value={travelMode}
+                  onChange={(e) => setTravelMode(e.target.value as 'train' | 'car' | 'either')}
+                  className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-[#1a3d2b] focus:ring-2 focus:ring-[#1a3d2b]/10 transition"
+                >
+                  <option value="train">Train</option>
+                  <option value="car">Car</option>
+                  <option value="either">Either</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                  Max Travel Time
+                </label>
+                <select
+                  value={maxTravelMinutes}
+                  onChange={(e) => setMaxTravelMinutes(Number(e.target.value))}
+                  className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-[#1a3d2b] focus:ring-2 focus:ring-[#1a3d2b]/10 transition"
+                >
+                  {[45, 60, 75, 90, 120].map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {minutes} min
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-[#f8fbf4] border border-[#dbe6d4] px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#1a3d2b]">Default booking preference</p>
+              <p className="text-sm text-gray-600 mt-1 leading-relaxed">
+                We automatically avoid rainy tee times and wind above 20 km/h unless you tell the assistant otherwise.
+              </p>
             </div>
 
             <button

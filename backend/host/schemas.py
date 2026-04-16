@@ -17,6 +17,9 @@ class ChatRequest(BaseModel):
     )
     user_name: Optional[str] = Field(default=None, description="User's name for bookings.")
     user_email: Optional[str] = Field(default=None, description="User's email for bookings.")
+    home_area: Optional[str] = Field(default=None, description="User's saved home area or nearest station.")
+    travel_mode: Optional[str] = Field(default=None, description="Preferred travel mode: train, car, or either.")
+    max_travel_minutes: Optional[int] = Field(default=None, description="Maximum preferred travel time in minutes.")
 
 
 class ChatResponse(BaseModel):

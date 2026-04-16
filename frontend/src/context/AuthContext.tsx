@@ -4,13 +4,37 @@ interface AuthUser {
   id: number
   name: string
   email: string
+  phone?: string | null
+  home_area: string
+  travel_mode: 'train' | 'car' | 'either'
+  max_travel_minutes: number
+}
+
+interface RegisterPayload {
+  name: string
+  email: string
+  password: string
+  phone?: string
+  homeArea: string
+  travelMode: 'train' | 'car' | 'either'
+  maxTravelMinutes: number
+}
+
+interface ProfilePayload {
+  name: string
+  phone?: string
+  homeArea: string
+  travelMode: 'train' | 'car' | 'either'
+  maxTravelMinutes: number
 }
 
 interface AuthContextValue {
   user: AuthUser | null
   token: string | null
   login: (email: string, password: string) => Promise<void>
-  register: (name: string, email: string, password: string) => Promise<void>
+  register: (payload: RegisterPayload) => Promise<void>
+  refreshProfile: () => Promise<void>
+  updateProfile: (payload: ProfilePayload) => Promise<void>
   logout: () => void
 }
 
@@ -47,11 +71,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(data.access_token, data.user)
   }, [])
 
-  const register = useCallback(async (name: string, email: string, password: string) => {
+  const register = useCallback(async (payload: RegisterPayload) => {
     const res = await fetch('/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({
+        name: payload.name,
+        email: payload.email,
+        password: payload.password,
+        phone: payload.phone,
+        home_area: payload.homeArea,
+        travel_mode: payload.travelMode,
+        max_travel_minutes: payload.maxTravelMinutes,
+      }),
     })
     if (!res.ok) {
       const err = await res.json()
@@ -59,6 +91,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const data = await res.json()
     persist(data.access_token, data.user)
+  }, [])
+
+  const refreshProfile = useCallback(async () => {
+    const activeToken = localStorage.getItem(TOKEN_KEY)
+    if (!activeToken) return
+    const res = await fetch('/auth/me', {
+      headers: { Authorization: `Bearer ${activeToken}` },
+    })
+    if (!res.ok) {
+      throw new Error('Failed to load profile.')
+    }
+    const profile = await res.json()
+    persist(activeToken, profile)
+  }, [])
+
+  const updateProfile = useCallback(async (payload: ProfilePayload) => {
+    const activeToken = localStorage.getItem(TOKEN_KEY)
+    if (!activeToken) {
+      throw new Error('Not authenticated.')
+    }
+
+    const res = await fetch('/auth/me', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${activeToken}`,
+      },
+      body: JSON.stringify({
+        name: payload.name,
+        phone: payload.phone || null,
+        home_area: payload.homeArea,
+        travel_mode: payload.travelMode,
+        max_travel_minutes: payload.maxTravelMinutes,
+      }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.detail || 'Profile update failed.')
+    }
+
+    const profile = await res.json()
+    persist(activeToken, profile)
   }, [])
 
   const logout = useCallback(() => {
@@ -69,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, login, register, refreshProfile, updateProfile, logout }}>
       {children}
     </AuthContext.Provider>
   )

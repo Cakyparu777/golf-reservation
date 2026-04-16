@@ -11,8 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.db.seed_data import seed_database
 from backend.mcp_server.tools.search import search_tee_times, get_course_info, suggest_alternatives
+from backend.mcp_server.tools.search import recommend_tee_times
 from backend.mcp_server.tools.reservation import make_reservation, confirm_reservation, cancel_reservation
 from backend.mcp_server.tools.user import list_user_reservations
+from backend.mcp_server.tools.weather import get_weather_forecast
 
 
 @pytest.fixture(autouse=True)
@@ -44,11 +46,11 @@ class TestSearchTeeTimesTool:
 
     def test_search_by_course_name(self):
         result = search_tee_times(
-            date=_future_date(), num_players=1, course_name="Pebble Beach"
+            date=_future_date(), num_players=1, course_name="Wakasu"
         )
         assert result["total_results"] > 0
         for tt in result["available_tee_times"]:
-            assert "Pebble" in tt["course_name"]
+            assert "Wakasu" in tt["course_name"]
 
     def test_search_time_range(self):
         result = search_tee_times(
@@ -69,14 +71,66 @@ class TestSearchTeeTimesTool:
         )
         assert result["total_results"] == 0
 
+    def test_search_today_excludes_past_slots(self, monkeypatch):
+        fixed_now = datetime(2026, 4, 16, 10, 30, 0)
+
+        class FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return fixed_now
+
+        monkeypatch.setattr("backend.mcp_server.tools.search.datetime", FixedDateTime)
+
+        from backend.mcp_server.db.connection import get_connection
+
+        today = fixed_now.strftime("%Y-%m-%d")
+        with get_connection() as conn:
+            course_id = conn.execute("SELECT id FROM golf_courses ORDER BY id LIMIT 1").fetchone()[0]
+            conn.execute(
+                "DELETE FROM tee_times WHERE date(tee_datetime) BETWEEN date(?, '-1 day') AND date(?, '+1 day')",
+                (today, today),
+            )
+            conn.execute(
+                """
+                INSERT INTO tee_times (course_id, tee_datetime, max_players, available_slots, price_per_player)
+                VALUES (?, ?, 4, 4, ?)
+                """,
+                (course_id, f"{today}T09:00:00", 100.0),
+            )
+            conn.execute(
+                """
+                INSERT INTO tee_times (course_id, tee_datetime, max_players, available_slots, price_per_player)
+                VALUES (?, ?, 4, 4, ?)
+                """,
+                (course_id, f"{today}T10:30:00", 110.0),
+            )
+            conn.execute(
+                """
+                INSERT INTO tee_times (course_id, tee_datetime, max_players, available_slots, price_per_player)
+                VALUES (?, ?, 4, 4, ?)
+                """,
+                (course_id, f"{today}T11:00:00", 120.0),
+            )
+            conn.commit()
+
+        result = search_tee_times(
+            date=today,
+            num_players=1,
+            time_range_start="06:00",
+            time_range_end="18:00",
+        )
+
+        tee_datetimes = [tt["tee_datetime"] for tt in result["available_tee_times"]]
+        assert tee_datetimes == [f"{today}T11:00:00"]
+
 
 class TestGetCourseInfoTool:
     """Tests for the get_course_info tool."""
 
     def test_get_by_name(self):
-        result = get_course_info(course_name="Augusta")
+        result = get_course_info(course_name="Tokyo Kokusai")
         assert "error" not in result
-        assert "Augusta" in result["name"]
+        assert "Tokyo Kokusai" in result["name"]
 
     def test_get_by_id(self):
         result = get_course_info(course_id=1)
@@ -110,9 +164,198 @@ class TestSuggestAlternativesTool:
             date=_future_date(),
             time_range_start="08:00",
             num_players=2,
-            course_name="Pebble Beach",
+            course_name="Wakasu",
         )
         assert result["message"]  # Should have a message
+
+    def test_suggest_alternatives_today_excludes_past_slots(self, monkeypatch):
+        fixed_now = datetime(2026, 4, 16, 10, 30, 0)
+
+        class FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return fixed_now
+
+        monkeypatch.setattr("backend.mcp_server.tools.search.datetime", FixedDateTime)
+
+        from backend.mcp_server.db.connection import get_connection
+
+        today = fixed_now.strftime("%Y-%m-%d")
+        with get_connection() as conn:
+            courses = conn.execute(
+                "SELECT id, name FROM golf_courses ORDER BY id LIMIT 2"
+            ).fetchall()
+            primary_course_id, primary_course_name = courses[0]["id"], courses[0]["name"]
+            nearby_course_id = courses[1]["id"]
+
+            conn.execute(
+                "DELETE FROM tee_times WHERE date(tee_datetime) BETWEEN date(?, '-1 day') AND date(?, '+1 day')",
+                (today, today),
+            )
+            conn.execute(
+                """
+                INSERT INTO tee_times (course_id, tee_datetime, max_players, available_slots, price_per_player)
+                VALUES (?, ?, 4, 4, ?)
+                """,
+                (primary_course_id, f"{today}T09:00:00", 100.0),
+            )
+            conn.execute(
+                """
+                INSERT INTO tee_times (course_id, tee_datetime, max_players, available_slots, price_per_player)
+                VALUES (?, ?, 4, 4, ?)
+                """,
+                (nearby_course_id, f"{today}T10:30:00", 110.0),
+            )
+            conn.execute(
+                """
+                INSERT INTO tee_times (course_id, tee_datetime, max_players, available_slots, price_per_player)
+                VALUES (?, ?, 4, 4, ?)
+                """,
+                (primary_course_id, f"{today}T11:00:00", 120.0),
+            )
+            conn.execute(
+                """
+                INSERT INTO tee_times (course_id, tee_datetime, max_players, available_slots, price_per_player)
+                VALUES (?, ?, 4, 4, ?)
+                """,
+                (nearby_course_id, f"{today}T11:15:00", 130.0),
+            )
+            conn.commit()
+
+        result = suggest_alternatives(
+            date=today,
+            time_range_start="06:00",
+            num_players=1,
+            course_name=primary_course_name,
+        )
+
+        nearby_datetimes = [tt["tee_datetime"] for tt in result["nearby_courses"]]
+        alternative_datetimes = [tt["tee_datetime"] for tt in result["alternative_times"]]
+
+        assert nearby_datetimes == [f"{today}T11:00:00", f"{today}T11:15:00"]
+        assert alternative_datetimes == [f"{today}T11:00:00"]
+
+
+class TestWeatherTool:
+    """Tests for the weather forecast tool."""
+
+    def test_weather_forecast_good_conditions(self, monkeypatch):
+        class MockResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "hourly": {
+                        "time": ["2026-04-16T11:00", "2026-04-16T12:00"],
+                        "temperature_2m": [18.0, 20.0],
+                        "precipitation_probability": [10, 15],
+                        "precipitation": [0.0, 0.0],
+                        "wind_speed_10m": [9.0, 11.0],
+                        "weather_code": [1, 2],
+                    }
+                }
+
+        monkeypatch.setattr("backend.services.weather.httpx.get", lambda *args, **kwargs: MockResponse())
+
+        result = get_weather_forecast(
+            course_name="Tama Hills",
+            date="2026-04-16",
+            time="12:00",
+        )
+
+        assert result["course_name"] == "Tama Hills Golf Course"
+        assert result["assessment"] == "good"
+        assert "good for golf" in result["message"].lower()
+
+    def test_weather_forecast_bad_conditions(self, monkeypatch):
+        class MockResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "hourly": {
+                        "time": ["2026-04-16T12:00"],
+                        "temperature_2m": [14.0],
+                        "precipitation_probability": [90],
+                        "precipitation": [4.0],
+                        "wind_speed_10m": [42.0],
+                        "weather_code": [65],
+                    }
+                }
+
+        monkeypatch.setattr("backend.services.weather.httpx.get", lambda *args, **kwargs: MockResponse())
+
+        result = get_weather_forecast(
+            course_name="Wakasu",
+            date="2026-04-16",
+            time="12:00",
+        )
+
+        assert result["course_name"] == "Wakasu Golf Links"
+        assert result["assessment"] == "bad"
+        assert "poor for golf" in result["message"].lower()
+
+
+class TestRecommendationTool:
+    """Tests for tee time recommendations."""
+
+    def test_recommend_tee_times_prefers_better_weather(self, monkeypatch):
+        def fake_weather(course_name: str, date: str, time: str):
+            if "Wakasu" in course_name:
+                return {
+                    "assessment": "good",
+                    "weather_code": 1,
+                    "precipitation_mm": 0.0,
+                    "wind_speed_kmh": 10.0,
+                    "message": "Conditions look good for golf: clear sky, 21C, 5% rain chance, 10 km/h wind.",
+                }
+            return {
+                "assessment": "bad",
+                "weather_code": 65,
+                "precipitation_mm": 4.0,
+                "wind_speed_kmh": 35.0,
+                "message": "Conditions look poor for golf: heavy rain, 14C, 85% rain chance, 35 km/h wind.",
+            }
+
+        monkeypatch.setattr("backend.mcp_server.tools.search.get_weather_forecast", fake_weather)
+
+        result = recommend_tee_times(
+            date=_future_date(),
+            num_players=1,
+            max_results=3,
+        )
+
+        assert result["recommended_tee_times"]
+        top_pick = result["recommended_tee_times"][0]
+        assert top_pick["tee_time"]["course_name"] == "Wakasu Golf Links"
+        assert top_pick["weather_assessment"] == "good"
+
+    def test_recommend_tee_times_filters_default_bad_weather(self, monkeypatch):
+        def fake_weather(course_name: str, date: str, time: str):
+            if "Wakasu" in course_name:
+                return {
+                    "assessment": "good",
+                    "weather_code": 1,
+                    "precipitation_mm": 0.0,
+                    "wind_speed_kmh": 12.0,
+                    "message": "Conditions look good for golf.",
+                }
+            return {
+                "assessment": "mixed",
+                "weather_code": 61,
+                "precipitation_mm": 1.2,
+                "wind_speed_kmh": 24.0,
+                "message": "Light rain and windy.",
+            }
+
+        monkeypatch.setattr("backend.mcp_server.tools.search.get_weather_forecast", fake_weather)
+
+        result = recommend_tee_times(date=_future_date(), num_players=1, max_results=5)
+
+        assert result["recommended_tee_times"]
+        assert all(item["tee_time"]["course_name"] == "Wakasu Golf Links" for item in result["recommended_tee_times"])
 
 
 # ---------------------------------------------------------------------------

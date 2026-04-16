@@ -1,97 +1,27 @@
-import { useState, useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { Send, Mic, Plus, Bot } from 'lucide-react'
+import { useChat } from '../context/ChatContext'
 
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: string
-  isElite?: boolean
-  card?: BookingCard
-}
-
-interface BookingCard {
-  month: string
-  day: string
-  title: string
-  subtitle: string
-}
-
-const QUICK_ACTIONS = ['Book Tee Time', 'Short Game Drills', 'View Stats']
-
-const INITIAL_MESSAGES: Message[] = [
-  {
-    role: 'assistant',
-    content:
-      "Welcome back to the Clubhouse. I've analyzed your recent performance at Pebble Beach. Your driving accuracy has improved by 12% this month.",
-    timestamp: '9:41 AM',
-  },
-  {
-    role: 'assistant',
-    content:
-      'Would you like me to suggest a training drill for your short game, or are you looking to book a new tee time for this weekend?',
-    timestamp: '9:41 AM',
-  },
+const QUICK_ACTIONS = [
+  { label: 'Book Tee Time', prompt: 'Help me book a tee time.' },
+  { label: 'Good Weather Picks', prompt: 'Find me the best good-weather tee times this weekend for 2 players.' },
+  { label: 'Best Recommendation', prompt: 'Recommend the best tee times tomorrow based on weather, value, and availability.' },
+  { label: 'View Stats', prompt: 'Show me my recent golf stats.' },
 ]
 
-function now(): string {
-  return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-}
-
 export default function AssistantPage() {
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
+  const { messages, showQuickActions, loading, sendMessage, setShowQuickActions } = useChat()
   const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [showQuickActions, setShowQuickActions] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  async function sendMessage(text: string) {
+  function handleSend(text: string) {
     if (!text.trim()) return
-    setShowQuickActions(false)
     setInput('')
-
-    const userMsg: Message = { role: 'user', content: text, timestamp: now() }
-    setMessages((prev) => [...prev, userMsg])
-    setLoading(true)
-
-    try {
-      const res = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          session_id: sessionId,
-          user_name: 'Pro',
-        }),
-      })
-
-      if (!res.ok) throw new Error('Network error')
-
-      const data = await res.json()
-      setSessionId(data.session_id)
-
-      const assistantMsg: Message = {
-        role: 'assistant',
-        content: data.reply,
-        timestamp: now(),
-      }
-      setMessages((prev) => [...prev, assistantMsg])
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: "I'm having trouble connecting to the server. Please ensure the backend is running on port 8000.",
-          timestamp: now(),
-        },
-      ])
-    } finally {
-      setLoading(false)
-    }
+    sendMessage(text)
   }
 
   return (
@@ -127,32 +57,8 @@ export default function AssistantPage() {
                 <div className="w-8 h-8 rounded-full bg-[#1a3d2b] flex items-center justify-center shrink-0 mt-0.5">
                   <Bot size={14} color="white" />
                 </div>
-                <div className="space-y-1">
-                  {msg.isElite && (
-                    <p className="text-[10px] font-bold text-[#c8922a] uppercase tracking-widest flex items-center gap-1">
-                      <span>★</span> Elite Recommendation
-                    </p>
-                  )}
-                  <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3">
-                    <p className="text-sm text-gray-800 leading-relaxed">{msg.content}</p>
-                  </div>
-                  {msg.card && (
-                    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center justify-between mt-2 shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase text-gray-400 font-semibold">{msg.card.month}</p>
-                          <p className="text-xl font-bold text-gray-900">{msg.card.day}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{msg.card.title}</p>
-                          <p className="text-xs text-gray-500">{msg.card.subtitle}</p>
-                        </div>
-                      </div>
-                      <button className="text-sm font-semibold text-[#1a3d2b] hover:underline">
-                        Confirm
-                      </button>
-                    </div>
-                  )}
+                <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3">
+                  <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                 </div>
               </div>
             ) : (
@@ -171,22 +77,25 @@ export default function AssistantPage() {
           </div>
         ))}
 
-        {/* Quick actions after initial messages */}
+        {/* Quick actions shown only when no conversation yet */}
         {showQuickActions && (
           <div className="flex gap-2 pl-11 flex-wrap">
             {QUICK_ACTIONS.map((action) => (
               <button
-                key={action}
-                onClick={() => sendMessage(action)}
+                key={action.label}
+                onClick={() => {
+                  setShowQuickActions(false)
+                  handleSend(action.prompt)
+                }}
                 className="border border-gray-300 rounded-full px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
               >
-                {action}
+                {action.label}
               </button>
             ))}
           </div>
         )}
 
-        {/* Loading */}
+        {/* Loading indicator */}
         {loading && (
           <div className="flex gap-3 max-w-2xl">
             <div className="w-8 h-8 rounded-full bg-[#1a3d2b] flex items-center justify-center shrink-0">
@@ -214,14 +123,14 @@ export default function AssistantPage() {
             placeholder="Type your message to GolfBot..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage(input)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend(input)}
             disabled={loading}
           />
           <button className="text-gray-400 hover:text-gray-600">
             <Mic size={18} />
           </button>
           <button
-            onClick={() => sendMessage(input)}
+            onClick={() => handleSend(input)}
             disabled={!input.trim() || loading}
             className="w-8 h-8 bg-[#1a3d2b] rounded-full flex items-center justify-center disabled:opacity-40 hover:bg-[#1e4d33] transition-colors"
           >

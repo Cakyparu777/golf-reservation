@@ -13,11 +13,11 @@ interface Reservation {
 }
 
 const COURSE_IMAGES: Record<string, string> = {
-  'Pebble Beach Golf Links': 'https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=200&q=80',
-  'Augusta National Golf Club': 'https://images.unsplash.com/photo-1535131749006-b7f58c99034b?w=200&q=80',
-  'Pine Valley Golf Club': 'https://images.unsplash.com/photo-1508193638397-1c4234db14d8?w=200&q=80',
-  'Shadow Creek Golf Course': 'https://images.unsplash.com/photo-1592919505780-303950717480?w=200&q=80',
-  'Torrey Pines Golf Course': 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=200&q=80',
+  'Wakasu Golf Links': 'https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=200&q=80',
+  'Tokyo Kokusai Golf Club': 'https://images.unsplash.com/photo-1535131749006-b7f58c99034b?w=200&q=80',
+  'Sakuragaoka Country Club': 'https://images.unsplash.com/photo-1508193638397-1c4234db14d8?w=200&q=80',
+  'Tama Hills Golf Course': 'https://images.unsplash.com/photo-1592919505780-303950717480?w=200&q=80',
+  'Sodegaura Country Club': 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=200&q=80',
 }
 
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=200&q=80'

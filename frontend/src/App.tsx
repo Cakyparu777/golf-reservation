@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { ChatProvider } from './context/ChatContext'
 import Sidebar from './components/Sidebar'
 import AssistantPage from './components/AssistantPage'
 import TeeTimesPage from './components/TeeTimesPage'
@@ -39,7 +40,9 @@ function AppInner() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppInner />
+      <ChatProvider>
+        <AppInner />
+      </ChatProvider>
     </AuthProvider>
   )
 }

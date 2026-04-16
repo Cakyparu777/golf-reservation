@@ -85,6 +85,34 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "tool_get_weather_forecast",
+            "description": (
+                "Get forecast weather for a golf course at a specific date and time. "
+                "Use it to tell the user whether the conditions look good, mixed, or bad for golf."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "course_name": {
+                        "type": "string",
+                        "description": "Partial or full course name.",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Requested date in YYYY-MM-DD format.",
+                    },
+                    "time": {
+                        "type": "string",
+                        "description": "Requested tee time in HH:MM format.",
+                    },
+                },
+                "required": ["course_name", "date", "time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "tool_suggest_alternatives",
             "description": (
                 "Suggest alternative tee times or nearby courses when a slot is unavailable. "
@@ -123,6 +151,56 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["date", "time_range_start", "num_players"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "tool_recommend_tee_times",
+            "description": (
+                "Recommend the best tee times based on weather, value, and availability. "
+                "Use this when the user asks for the best option, good-weather choices, or suggestions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {
+                        "type": "string",
+                        "description": "Requested date in YYYY-MM-DD format.",
+                    },
+                    "num_players": {
+                        "type": "integer",
+                        "description": "Number of players (1-4).",
+                    },
+                    "preferred_time": {
+                        "type": "string",
+                        "enum": ["morning", "afternoon", "evening"],
+                        "description": "Optional preferred time of day.",
+                    },
+                    "course_name": {
+                        "type": "string",
+                        "description": "Optional partial or full course name filter.",
+                    },
+                    "user_area": {
+                        "type": "string",
+                        "description": "Optional user home area or nearest station for nearest-course ranking.",
+                    },
+                    "travel_mode": {
+                        "type": "string",
+                        "enum": ["train", "car", "either"],
+                        "description": "Optional travel mode preference from the user profile.",
+                    },
+                    "max_travel_minutes": {
+                        "type": "integer",
+                        "description": "Optional max preferred travel time in minutes.",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of recommendations to return.",
+                    },
+                },
+                "required": ["date", "num_players"],
             },
         },
     },
@@ -247,7 +325,7 @@ class LLMClient:
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-    def chat(self, messages: list[dict]) -> dict:
+    def chat(self, messages: list[dict]) -> Any:
         """Send messages to OpenAI and return the response.
 
         Args:
@@ -258,8 +336,8 @@ class LLMClient:
         """
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=messages,
-            tools=TOOL_DEFINITIONS,
+            messages=messages,  # type: ignore[arg-type]
+            tools=TOOL_DEFINITIONS,  # type: ignore[arg-type]
             tool_choice="auto",
             temperature=0.7,
             max_tokens=1024,

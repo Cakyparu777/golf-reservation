@@ -100,6 +100,9 @@ def make_reservation(
             "name": user_name,
             "email": user_email,
             "phone": user_phone,
+            "home_area": None,
+            "travel_mode": None,
+            "max_travel_minutes": None,
         })
         user = conn.execute(queries.GET_USER_BY_EMAIL, {"email": user_email}).fetchone()
 

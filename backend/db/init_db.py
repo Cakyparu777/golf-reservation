@@ -24,6 +24,12 @@ def init_database(db_path: Optional[Path] = None) -> None:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
         if "password_hash" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+        if "home_area" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN home_area TEXT")
+        if "travel_mode" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN travel_mode TEXT DEFAULT 'train'")
+        if "max_travel_minutes" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN max_travel_minutes INTEGER DEFAULT 60")
     print(f"✅ Database initialized successfully.")
 
 

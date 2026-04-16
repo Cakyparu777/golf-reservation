@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { X, Calendar, Clock, Users, Flag, Award, MapPin, CheckCircle } from 'lucide-react'
+import { X, Calendar, Clock, Users, Flag, Award, MapPin, CheckCircle, SunMedium, CloudSun, CloudRain } from 'lucide-react'
 import { useAuth, authFetch } from '../context/AuthContext'
 import type { CourseData } from './TeeTimesPage'
+import { fetchWeatherForTeeTime, type WeatherSummary } from '../lib/weather'
 
 interface TeeTime {
   id: number
@@ -24,6 +25,7 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
   const [loading, setLoading] = useState(false)
   const [confirmed, setConfirmed] = useState<{ confirmation_number: string; total_price: number } | null>(null)
   const [error, setError] = useState('')
+  const [weather, setWeather] = useState<WeatherSummary | null>(null)
 
   useEffect(() => {
     fetch(`/api/tee-times?course_id=${course.id}&num_players=1&limit=10`)
@@ -34,6 +36,27 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
       })
       .catch(console.error)
   }, [course.id])
+
+  useEffect(() => {
+    if (!selected) {
+      setWeather(null)
+      return
+    }
+
+    let cancelled = false
+
+    fetchWeatherForTeeTime(course.name, selected.tee_datetime)
+      .then((data) => {
+        if (!cancelled) setWeather(data)
+      })
+      .catch(() => {
+        if (!cancelled) setWeather(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [course.name, selected])
 
   function formatDateTime(iso: string) {
     const d = new Date(iso)
@@ -66,6 +89,18 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
 
   const dt = selected ? formatDateTime(selected.tee_datetime) : null
   const total = selected ? selected.price_per_player * numPlayers : 0
+  const WeatherIcon =
+    weather?.assessment === 'good'
+      ? SunMedium
+      : weather?.assessment === 'bad'
+        ? CloudRain
+        : CloudSun
+  const weatherTone =
+    weather?.assessment === 'good'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      : weather?.assessment === 'bad'
+        ? 'bg-rose-50 text-rose-700 border-rose-200'
+        : 'bg-amber-50 text-amber-700 border-amber-200'
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -166,6 +201,22 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
                     </div>
                   </div>
                   <Detail icon={Flag} label="Tee Box" value="Championship" />
+                </div>
+              )}
+
+              {weather?.assessment && weather?.message && (
+                <div className={`mt-5 rounded-2xl border px-4 py-3 ${weatherTone}`}>
+                  <div className="flex items-center gap-2">
+                    <WeatherIcon size={16} />
+                    <p className="text-sm font-bold">
+                      {weather.assessment === 'good'
+                        ? 'Good golf weather'
+                        : weather.assessment === 'bad'
+                          ? 'Challenging golf weather'
+                          : 'Playable with caution'}
+                    </p>
+                  </div>
+                  <p className="text-xs mt-1.5 leading-relaxed">{weather.message}</p>
                 </div>
               )}
 

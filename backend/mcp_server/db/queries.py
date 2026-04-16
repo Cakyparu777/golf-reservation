@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS users (
     name          TEXT    NOT NULL,
     email         TEXT    NOT NULL UNIQUE,
     phone         TEXT,
+    home_area     TEXT,
+    travel_mode   TEXT    DEFAULT 'train',
+    max_travel_minutes INTEGER DEFAULT 60,
     password_hash TEXT,
     created_at    TEXT    DEFAULT (datetime('now'))
 );
@@ -195,11 +198,14 @@ WHERE t.id = :tee_time_id
 """
 
 INSERT_USER = """
-INSERT INTO users (name, email, phone)
-VALUES (:name, :email, :phone)
+INSERT INTO users (name, email, phone, home_area, travel_mode, max_travel_minutes)
+VALUES (:name, :email, :phone, :home_area, :travel_mode, :max_travel_minutes)
 ON CONFLICT(email) DO UPDATE SET
     name = excluded.name,
-    phone = COALESCE(excluded.phone, users.phone)
+    phone = COALESCE(excluded.phone, users.phone),
+    home_area = COALESCE(excluded.home_area, users.home_area),
+    travel_mode = COALESCE(excluded.travel_mode, users.travel_mode),
+    max_travel_minutes = COALESCE(excluded.max_travel_minutes, users.max_travel_minutes)
 """
 
 GET_USER_BY_EMAIL = """
@@ -301,12 +307,23 @@ WHERE status = 'PENDING'
 # ---------------------------------------------------------------------------
 
 INSERT_USER_AUTH = """
-INSERT INTO users (name, email, phone, password_hash)
-VALUES (:name, :email, :phone, :password_hash)
+INSERT INTO users (name, email, phone, home_area, travel_mode, max_travel_minutes, password_hash)
+VALUES (:name, :email, :phone, :home_area, :travel_mode, :max_travel_minutes, :password_hash)
 """
 
 GET_USER_BY_ID = """
 SELECT * FROM users WHERE id = :user_id
+"""
+
+UPDATE_USER_PROFILE = """
+UPDATE users
+SET
+    name = :name,
+    phone = :phone,
+    home_area = :home_area,
+    travel_mode = :travel_mode,
+    max_travel_minutes = :max_travel_minutes
+WHERE id = :user_id
 """
 
 LIST_COURSES = """

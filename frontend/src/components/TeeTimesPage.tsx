@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Search, Bell, User, MapPin, Star, Lock } from 'lucide-react'
+import { Search, Bell, User, MapPin, Star, Lock, SunMedium, CloudSun, CloudRain } from 'lucide-react'
 import ConfirmModal from './ConfirmModal'
 import { useAuth } from '../context/AuthContext'
+import { fetchWeatherForTeeTime, type WeatherSummary } from '../lib/weather'
+import { fetchRecommendations, type RecommendedTeeTime } from '../lib/recommendations'
 
 export interface CourseData {
   id: number
@@ -36,10 +38,21 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + ` · ${time}`
 }
 
+function tomorrowIsoDate(): string {
+  const next = new Date()
+  next.setDate(next.getDate() + 1)
+  const year = next.getFullYear()
+  const month = String(next.getMonth() + 1).padStart(2, '0')
+  const day = String(next.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export default function TeeTimesPage() {
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const [activeFilter, setActiveFilter] = useState('All Courses')
   const [courses, setCourses] = useState<CourseData[]>([])
+  const [weatherByCourseId, setWeatherByCourseId] = useState<Record<number, WeatherSummary | null>>({})
+  const [recommendations, setRecommendations] = useState<RecommendedTeeTime[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCourse, setSelectedCourse] = useState<CourseData | null>(null)
 
@@ -52,6 +65,45 @@ export default function TeeTimesPage() {
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [token])
+
+  useEffect(() => {
+    const eligibleCourses = courses.filter((course) => course.next_available)
+    if (eligibleCourses.length === 0) return
+
+    let cancelled = false
+
+    Promise.all(
+      eligibleCourses.map(async (course) => {
+        try {
+          const weather = await fetchWeatherForTeeTime(course.name, course.next_available as string)
+          return [course.id, weather] as const
+        } catch {
+          return [course.id, null] as const
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return
+      setWeatherByCourseId(Object.fromEntries(entries))
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [courses])
+
+  useEffect(() => {
+    fetchRecommendations({
+      date: tomorrowIsoDate(),
+      numPlayers: 1,
+      preferredTime: 'morning',
+      userArea: user?.home_area,
+      travelMode: user?.travel_mode,
+      maxTravelMinutes: user?.max_travel_minutes,
+      maxResults: 3,
+    })
+      .then((data) => setRecommendations(data.recommended_tee_times))
+      .catch(() => setRecommendations([]))
+  }, [user])
 
   return (
     <div className="min-h-full">
@@ -99,6 +151,23 @@ export default function TeeTimesPage() {
           </div>
         </div>
 
+        {recommendations.length > 0 && (
+          <div className="mt-6 bg-white rounded-3xl p-5 shadow-sm border border-[#e7ecdf]">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <p className="text-xs font-bold text-[#c8922a] uppercase tracking-widest mb-1">Smart Suggestions</p>
+                <h2 className="text-xl font-extrabold text-[#1a3d2b]">Best Times To Play Next</h2>
+                <p className="text-sm text-gray-500 mt-1">Weather-aware picks for tomorrow morning, ranked by conditions, value, availability, and your travel profile.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {recommendations.map((recommendation) => (
+                <RecommendationCard key={recommendation.tee_time.id} recommendation={recommendation} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="grid grid-cols-3 gap-4 mt-6">
             {[...Array(6)].map((_, i) => (
@@ -121,6 +190,7 @@ export default function TeeTimesPage() {
                 image={COURSE_IMAGES[course.id] || COURSE_IMAGES[1]}
                 onSelect={setSelectedCourse}
                 formatDate={formatDate}
+                weather={weatherByCourseId[course.id]}
               />
             ))}
 
@@ -193,17 +263,78 @@ export default function TeeTimesPage() {
   )
 }
 
+function RecommendationCard({ recommendation }: { recommendation: RecommendedTeeTime }) {
+  const teeTime = recommendation.tee_time
+  const weatherAssessment = recommendation.weather_assessment
+  const WeatherIcon =
+    weatherAssessment === 'good'
+      ? SunMedium
+      : weatherAssessment === 'bad'
+        ? CloudRain
+        : CloudSun
+
+  const weatherTone =
+    weatherAssessment === 'good'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      : weatherAssessment === 'bad'
+        ? 'bg-rose-50 text-rose-700 border-rose-200'
+        : 'bg-amber-50 text-amber-700 border-amber-200'
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-[#fafbf7] p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-bold text-gray-900">{teeTime.course_name}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{formatDate(teeTime.tee_datetime)}</p>
+        </div>
+        <span className="text-xs font-semibold text-[#1a3d2b]">${teeTime.price_per_player.toFixed(0)}</span>
+      </div>
+      <div className={`inline-flex mt-3 items-center gap-1.5 rounded-full border px-2.5 py-1 ${weatherTone}`}>
+        <WeatherIcon size={11} />
+        <span className="text-[10px] font-bold uppercase tracking-wide">{weatherAssessment || 'Weather'}</span>
+      </div>
+      <p className="mt-3 text-xs text-gray-600 leading-relaxed">{recommendation.recommendation_reason}</p>
+      {recommendation.weather_message && (
+        <p className="mt-2 text-xs text-gray-500 leading-relaxed">{recommendation.weather_message}</p>
+      )}
+    </div>
+  )
+}
+
 function CourseCard({
   course,
   image,
   onSelect,
   formatDate,
+  weather,
 }: {
   course: CourseData
   image: string
   onSelect: (c: CourseData) => void
   formatDate: (s: string | null) => string
+  weather?: WeatherSummary | null
 }) {
+  const WeatherIcon =
+    weather?.assessment === 'good'
+      ? SunMedium
+      : weather?.assessment === 'bad'
+        ? CloudRain
+        : CloudSun
+
+  const weatherTone =
+    weather?.assessment === 'good'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      : weather?.assessment === 'bad'
+        ? 'bg-rose-50 text-rose-700 border-rose-200'
+        : 'bg-amber-50 text-amber-700 border-amber-200'
+
+  const weatherLabel =
+    weather?.assessment === 'good'
+      ? 'Good Weather'
+      : weather?.assessment === 'bad'
+        ? 'Tough Weather'
+        : 'Mixed Weather'
+
   return (
     <div className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       <div className="relative h-40">
@@ -218,6 +349,12 @@ function CourseCard({
           <div className="absolute top-2 left-2 bg-[#c8922a] text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex items-center gap-1">
             <Lock size={8} />
             Member Exclusive
+          </div>
+        )}
+        {weather?.assessment && (
+          <div className={`absolute bottom-2 left-2 backdrop-blur-sm border rounded-full px-2.5 py-1 flex items-center gap-1.5 ${weatherTone}`}>
+            <WeatherIcon size={11} />
+            <span className="text-[10px] font-bold uppercase tracking-wide">{weatherLabel}</span>
           </div>
         )}
       </div>
@@ -240,6 +377,9 @@ function CourseCard({
           <div>
             <p className="text-[10px] uppercase text-gray-400 font-semibold tracking-wide">Next Available</p>
             <p className="text-sm font-bold text-gray-900">{formatDate(course.next_available)}</p>
+            {weather?.message && (
+              <p className="text-xs text-gray-500 mt-1 max-w-[15rem] line-clamp-2">{weather.message}</p>
+            )}
           </div>
           <button
             onClick={() => onSelect(course)}
