@@ -22,8 +22,16 @@ export const pagePaths: Record<Page, string> = {
 }
 
 function AppShell() {
-  const { user } = useAuth()
+  const { user, authReady } = useAuth()
   const location = useLocation()
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="text-sm font-semibold text-green-900">Loading your clubhouse...</div>
+      </div>
+    )
+  }
 
   if (!user) {
     return (

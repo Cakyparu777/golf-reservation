@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Bell, User, Calendar, Clock, MapPin, SearchX, AlertCircle } from 'lucide-react'
+import { Bell, User, Calendar, Clock, SearchX } from 'lucide-react'
 import { useAuth, authFetch } from '../context/AuthContext'
+import { expectJson, readErrorMessage } from '../lib/api'
+import { formatJPY } from '../lib/currency'
 
 interface Reservation {
   id: number
@@ -26,20 +28,39 @@ export default function MyGolfPage() {
   const { token, user } = useAuth()
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const fetchReservations = useCallback(() => {
-    authFetch('/api/reservations', token)
-      .then((r) => r.json())
-      .then(setReservations)
-      .catch(console.error)
-      .finally(() => setLoading(false))
+  const fetchReservations = useCallback(async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      const response = await authFetch('/api/reservations', token)
+      const data = await expectJson<Reservation[]>(response, 'Failed to load reservations.')
+      setReservations(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setReservations([])
+      setError(err instanceof Error ? err.message : 'Failed to load reservations.')
+    } finally {
+      setLoading(false)
+    }
   }, [token])
 
-  useEffect(() => { fetchReservations() }, [fetchReservations])
+  useEffect(() => {
+    fetchReservations()
+  }, [fetchReservations])
 
   async function handleCancel(id: number) {
-    await authFetch(`/api/reservations/${id}`, token, { method: 'DELETE' })
-    fetchReservations()
+    setError('')
+    try {
+      const response = await authFetch(`/api/reservations/${id}`, token, { method: 'DELETE' })
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response, 'Failed to cancel reservation.'))
+      }
+      await fetchReservations()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel reservation.')
+    }
   }
 
   const upcoming = reservations.filter((r) => r.status !== 'CANCELLED')
@@ -47,7 +68,6 @@ export default function MyGolfPage() {
 
   return (
     <div className="min-h-full animate-fadeIn pb-24 md:pb-6">
-      {/* Top Bar */}
       <div className="flex items-center justify-between px-4 md:px-8 py-4 bg-white/80 backdrop-blur-lg border-b border-gray-100 sticky top-0 z-30">
         <div className="animate-slideInLeft">
           <h1 className="text-xl font-extrabold text-green-900 tracking-tight">My Reservations</h1>
@@ -62,7 +82,6 @@ export default function MyGolfPage() {
       </div>
 
       <div className="px-4 md:px-8 py-6 flex flex-col xl:flex-row gap-6">
-        {/* Left: Reservations */}
         <div className="flex-1 max-w-4xl animate-slideUp">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-bold text-gray-900">Upcoming Rounds</h2>
@@ -70,6 +89,12 @@ export default function MyGolfPage() {
               {upcoming.length} Total
             </div>
           </div>
+
+          {error && (
+            <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+              {error}
+            </div>
+          )}
 
           {loading ? (
             <div className="space-y-4">
@@ -102,10 +127,7 @@ export default function MyGolfPage() {
           )}
         </div>
 
-        {/* Right: Sidebar widgets */}
         <div className="w-full xl:w-80 shrink-0 flex flex-col gap-5 xl:sticky xl:top-24 h-max animate-slideUp stagger-3">
-          
-          {/* User Info */}
           <div className="bg-white rounded-[1.5rem] p-5 shadow-card border border-gray-100/50 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-900 to-green-700 flex items-center justify-center text-white text-xl font-bold shadow-soft mb-3 relative">
               {user?.name.charAt(0).toUpperCase()}
@@ -117,7 +139,6 @@ export default function MyGolfPage() {
             <p className="text-xs font-semibold text-gold-500 uppercase tracking-widest mt-0.5">Elite Member</p>
           </div>
 
-          {/* Progress */}
           <div className="bg-white rounded-[1.5rem] p-6 shadow-soft border border-gray-100 overflow-hidden relative group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-gold-500/5 rounded-bl-[100%] transition-transform group-hover:scale-110" />
             <div className="relative">
@@ -143,7 +164,6 @@ export default function MyGolfPage() {
             </div>
           </div>
 
-          {/* Promo */}
           <div className="bg-gradient-to-br from-green-900 to-green-950 rounded-[1.5rem] p-6 text-white relative overflow-hidden card-hover">
             <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top_right,_white,_transparent)]" />
             <div className="relative">
@@ -159,7 +179,6 @@ export default function MyGolfPage() {
               </button>
             </div>
           </div>
-
         </div>
       </div>
     </div>
@@ -196,7 +215,7 @@ function ReservationCard({
 
       <div className="flex-1 min-w-0 w-full flex flex-col justify-center">
         <h3 className="text-base font-extrabold text-gray-900 truncate">{r.course_name}</h3>
-        
+
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
             <Calendar size={12} className="text-green-900" /> {dateStr}

@@ -15,6 +15,7 @@ RECOMMENDATION_KEYWORDS = ("best", "recommend", "suggest", "good weather", "clos
 FOLLOW_UP_COURSE_REFS = ("there", "that course", "that one", "the course", "it")
 FOLLOW_UP_DATE_REFS = ("that day", "that date", "same day")
 FOLLOW_UP_TIME_REFS = ("same time", "that time")
+NEAREST_SELF_REFS = ("nearest to me", "closest to me", "near me")
 ORDINAL_WORDS = {
     "first": 1,
     "1st": 1,
@@ -198,6 +199,13 @@ def _message_has_any(message: str, phrases: tuple[str, ...]) -> bool:
     return any(phrase in lowered for phrase in phrases)
 
 
+def _is_nearest_self_request(message: str) -> bool:
+    lowered = message.lower()
+    if any(phrase in lowered for phrase in NEAREST_SELF_REFS):
+        return True
+    return ("nearest" in lowered or "closest" in lowered) and " me" in lowered
+
+
 def resolve_context(message: str, current_context: Optional[dict] = None, now: Optional[datetime] = None) -> dict:
     """Resolve follow-up references against the current session context."""
     existing = dict(current_context or {})
@@ -206,6 +214,8 @@ def resolve_context(message: str, current_context: Optional[dict] = None, now: O
 
     if extracted.get("location"):
         resolved["location"] = extracted["location"]
+    elif _is_nearest_self_request(message) and existing.get("home_area"):
+        resolved["location"] = existing["home_area"]
 
     option_index = extracted.get("selected_option_index")
     if option_index and existing.get("last_presented_options"):

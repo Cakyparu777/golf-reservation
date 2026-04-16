@@ -1,10 +1,12 @@
 import { useState, FormEvent } from 'react'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function LoginPage() {
   const { login } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -17,6 +19,10 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
+      const nextPath = typeof location.state?.from?.pathname === 'string'
+        ? location.state.from.pathname
+        : '/assistant'
+      navigate(nextPath, { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed.')
     } finally {

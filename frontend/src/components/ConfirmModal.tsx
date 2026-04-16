@@ -3,6 +3,7 @@ import { X, Calendar, Clock, Users, Flag, Award, MapPin, CheckCircle, SunMedium,
 import { useAuth, authFetch } from '../context/AuthContext'
 import type { CourseData } from './TeeTimesPage'
 import { formatJPY } from '../lib/currency'
+import { expectJson } from '../lib/api'
 import { fetchWeatherForTeeTime, type WeatherSummary } from '../lib/weather'
 
 interface TeeTime {
@@ -29,14 +30,30 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
   const [weather, setWeather] = useState<WeatherSummary | null>(null)
 
   useEffect(() => {
-    fetch(`/api/tee-times?course_id=${course.id}&num_players=1&limit=10`)
-      .then((r) => r.json())
+    let cancelled = false
+    setError('')
+    fetch(`/api/tee-times?course_id=${course.id}&num_players=${numPlayers}&limit=10`)
+      .then((r) => expectJson<TeeTime[]>(r, 'Failed to load tee times.'))
       .then((data: TeeTime[]) => {
-        setTeeTimes(data)
-        if (data.length > 0) setSelected(data[0])
+        if (cancelled) return
+        const nextTeeTimes = Array.isArray(data) ? data : []
+        setTeeTimes(nextTeeTimes)
+        setSelected((current) => nextTeeTimes.find((tt) => tt.id === current?.id) || nextTeeTimes[0] || null)
+        if (nextTeeTimes.length === 0) {
+          setError('No tee times are available for that party size right now.')
+        }
       })
-      .catch(console.error)
-  }, [course.id])
+      .catch((err) => {
+        if (cancelled) return
+        setTeeTimes([])
+        setSelected(null)
+        setError(err instanceof Error ? err.message : 'Failed to load tee times.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [course.id, numPlayers])
 
   useEffect(() => {
     if (!selected) {

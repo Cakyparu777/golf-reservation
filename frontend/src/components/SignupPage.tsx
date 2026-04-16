@@ -1,10 +1,12 @@
 import { useState, FormEvent } from 'react'
 import { Eye, EyeOff, Check, Loader2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function SignupPage() {
   const { register } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -30,6 +32,10 @@ export default function SignupPage() {
         travelMode,
         maxTravelMinutes,
       })
+      const nextPath = typeof location.state?.from?.pathname === 'string'
+        ? location.state.from.pathname
+        : '/assistant'
+      navigate(nextPath, { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed.')
     } finally {

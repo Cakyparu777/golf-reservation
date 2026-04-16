@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
+import { expectJson } from '../lib/api'
 
 interface AuthUser {
   id: number
@@ -32,6 +33,7 @@ interface ProfilePayload {
 interface AuthContextValue {
   user: AuthUser | null
   token: string | null
+  authReady: boolean
   login: (email: string, password: string) => Promise<void>
   register: (payload: RegisterPayload) => Promise<void>
   refreshProfile: () => Promise<void>
@@ -41,37 +43,24 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
-const TOKEN_KEY = 'fe_token'
-const USER_KEY = 'fe_user'
-
 async function fetchProfile(accessToken: string): Promise<AuthUser> {
   const res = await fetch('/auth/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to load profile.')
-  }
-  return res.json()
+  return expectJson<AuthUser>(res, 'Failed to load profile.')
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY))
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const raw = localStorage.getItem(USER_KEY)
-    return raw ? JSON.parse(raw) : null
-  })
+  const [token, setToken] = useState<string | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [authReady, setAuthReady] = useState(false)
 
   const clearPersisted = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
     setToken(null)
     setUser(null)
   }, [])
 
   const persist = useCallback((nextToken: string, nextUser: AuthUser) => {
-    localStorage.setItem(TOKEN_KEY, nextToken)
-    localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
     setToken(nextToken)
     setUser(nextUser)
   }, [])
@@ -129,25 +118,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }),
     })
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.detail || 'Registration failed.')
-    }
-
-    const profile = await res.json()
+    const profile = await expectJson<AuthUser>(res, 'Registration failed.')
     persist(data.session.access_token, profile)
   }, [persist])
 
   const refreshProfile = useCallback(async () => {
-    const activeToken = localStorage.getItem(TOKEN_KEY)
-    if (!activeToken) return
-    const profile = await fetchProfile(activeToken)
-    persist(activeToken, profile)
-  }, [persist])
+    if (!token) return
+    const profile = await fetchProfile(token)
+    persist(token, profile)
+  }, [persist, token])
 
   const updateProfile = useCallback(async (payload: ProfilePayload) => {
-    const activeToken = localStorage.getItem(TOKEN_KEY)
-    if (!activeToken) {
+    if (!token) {
       throw new Error('Not authenticated.')
     }
 
@@ -167,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${activeToken}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         name: payload.name,
@@ -178,14 +160,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }),
     })
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.detail || 'Profile update failed.')
-    }
-
-    const profile = await res.json()
-    persist(activeToken, profile)
-  }, [persist])
+    const profile = await expectJson<AuthUser>(res, 'Profile update failed.')
+    persist(token, profile)
+  }, [persist, token])
 
   const logout = useCallback(async () => {
     if (supabase) {
@@ -195,38 +172,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [clearPersisted])
 
   useEffect(() => {
-    if (!supabase) return
+    if (!supabase) {
+      clearPersisted()
+      setAuthReady(true)
+      return
+    }
 
-    supabase.auth.getSession().then(({ data }) => {
-      const session = data.session
-      if (!session) {
+    const supabaseClient = supabase
+
+    let active = true
+
+    const hydrate = async () => {
+      try {
+        const { data } = await supabaseClient.auth.getSession()
+        const session = data.session
+
+        if (!active) return
+
+        if (!session) {
+          clearPersisted()
+          return
+        }
+
+        const profile = await fetchProfile(session.access_token)
+        if (!active) return
+        persist(session.access_token, profile)
+      } catch {
+        if (!active) return
         clearPersisted()
-        return
+      } finally {
+        if (active) {
+          setAuthReady(true)
+        }
       }
-      if (session.access_token !== token || !user) {
-        fetchProfile(session.access_token)
-          .then((profile) => persist(session.access_token, profile))
-          .catch(() => clearPersisted())
-      }
-    })
+    }
+
+    hydrate()
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+      if (!active) return
+
       if (!session) {
         clearPersisted()
+        setAuthReady(true)
         return
       }
-      fetchProfile(session.access_token)
-        .then((profile) => persist(session.access_token, profile))
-        .catch(() => clearPersisted())
+
+      try {
+        const profile = await fetchProfile(session.access_token)
+        if (!active) return
+        persist(session.access_token, profile)
+      } catch {
+        if (!active) return
+        clearPersisted()
+      } finally {
+        if (active) {
+          setAuthReady(true)
+        }
+      }
     })
 
-    return () => subscription.unsubscribe()
-  }, [clearPersisted, persist, token, user])
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [clearPersisted, persist])
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, refreshProfile, updateProfile, logout }}>
+    <AuthContext.Provider value={{ user, token, authReady, login, register, refreshProfile, updateProfile, logout }}>
       {children}
     </AuthContext.Provider>
   )

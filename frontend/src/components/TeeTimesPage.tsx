@@ -3,6 +3,7 @@ import { Search, MapPin, Star, Lock, SunMedium, CloudSun, CloudRain, Sparkles, A
 import ConfirmModal from './ConfirmModal'
 import { useAuth } from '../context/AuthContext'
 import { formatJPY } from '../lib/currency'
+import { expectJson } from '../lib/api'
 import { fetchWeatherForTeeTime, type WeatherSummary } from '../lib/weather'
 import { fetchRecommendations, type RecommendedTeeTime } from '../lib/recommendations'
 
@@ -55,17 +56,35 @@ export default function TeeTimesPage() {
   const [weatherByCourseId, setWeatherByCourseId] = useState<Record<number, WeatherSummary | null>>({})
   const [recommendations, setRecommendations] = useState<RecommendedTeeTime[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [selectedCourse, setSelectedCourse] = useState<CourseData | null>(null)
   const [searchFocused, setSearchFocused] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError('')
+
     fetch('/api/courses', {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
-      .then((r) => r.json())
-      .then(setCourses)
-      .catch(console.error)
-      .finally(() => setLoading(false))
+      .then((r) => expectJson<CourseData[]>(r, 'Failed to load courses.'))
+      .then((data) => {
+        if (cancelled) return
+        setCourses(Array.isArray(data) ? data : [])
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setCourses([])
+        setError(err instanceof Error ? err.message : 'Failed to load courses.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [token])
 
   useEffect(() => {
@@ -167,6 +186,12 @@ export default function TeeTimesPage() {
         )}
 
         {/* Course Grid */}
+        {error && (
+          <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {error}
+          </div>
+        )}
+
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
             {[...Array(6)].map((_, i) => (

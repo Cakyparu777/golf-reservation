@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from 'react'
 import { useAuth } from './AuthContext'
+import { readErrorMessage } from '../lib/api'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -63,8 +64,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [showQuickActions, setShowQuickActions] = useState(
     () => sessionStorage.getItem(SESSION_KEY) === null
   )
+  const [loading, setLoading] = useState(false)
+  const lastIdentityRef = useRef<string | null>(null)
 
-  // Clear stale session when user changes (e.g. after logout/login)
   const clearSession = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY)
     sessionStorage.removeItem(MESSAGES_KEY)
@@ -72,7 +74,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setMessages(INITIAL_MESSAGES)
     setShowQuickActions(true)
   }, [])
-  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const identity = user?.email ?? null
+    if (lastIdentityRef.current === null) {
+      lastIdentityRef.current = identity
+      if (!identity && !token) {
+        clearSession()
+      }
+      return
+    }
+
+    if (lastIdentityRef.current !== identity) {
+      clearSession()
+    }
+
+    lastIdentityRef.current = identity
+  }, [clearSession, token, user?.email])
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return
@@ -102,7 +120,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           message: text,
           session_id: sid,
-          user_name: user?.name ?? 'Pro',
+          user_name: user?.name ?? null,
           user_email: user?.email ?? null,
           home_area: user?.home_area ?? null,
           travel_mode: user?.travel_mode ?? null,
@@ -110,7 +128,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }),
       })
 
-      if (!res.ok) throw new Error('Network error')
+      if (!res.ok) {
+        throw new Error(await readErrorMessage(res, 'Chat request failed.'))
+      }
 
       const data = await res.json()
 

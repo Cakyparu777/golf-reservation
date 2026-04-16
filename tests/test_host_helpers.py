@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from backend.host.confirmation import extract_booking_details
-from backend.host.session_context import extract_message_context
+from backend.host.session_context import extract_message_context, resolve_context
 
 
 def test_extract_booking_details_uses_supabase_course_list(monkeypatch):
@@ -24,3 +24,13 @@ def test_extract_message_context_does_not_treat_time_as_option_reference():
     context = extract_message_context("book the one at 10am")
 
     assert context["selected_option_index"] is None
+
+
+def test_resolve_context_uses_saved_home_area_for_nearest_to_me():
+    resolved = resolve_context(
+        "where is the nearest golf course to me",
+        current_context={"home_area": "Adachi-ku", "travel_mode": "train", "max_travel_minutes": 60},
+    )
+
+    assert resolved["location"] == "Adachi-ku"
+    assert resolved["intent"] == "recommendation"
