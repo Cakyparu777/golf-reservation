@@ -8,7 +8,6 @@ from __future__ import annotations
 from typing import Optional
 
 from backend.services.supabase import (
-    is_supabase_rest_configured,
     is_supabase_service_role_configured,
     list_reservations_for_email,
 )
@@ -42,13 +41,7 @@ def list_user_reservations(
         filter_clause = queries.LIST_USER_RESERVATIONS_STATUS_FILTER
         params = {"email": user_email, "status": status}
 
-    if is_supabase_rest_configured():
-        if not is_supabase_service_role_configured():
-            return {
-                "reservations": [],
-                "total": 0,
-                "message": "Supabase service role key is not configured.",
-            }
+    if is_supabase_service_role_configured():
         rows = list_reservations_for_email(user_email=user_email, status_filter=status_filter)
         reservations = [Reservation(**row) for row in rows]
     else:

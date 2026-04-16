@@ -232,6 +232,39 @@ def _augment_tool_result_with_weather(tool_name: str, result: str) -> str:
     return json.dumps(payload)
 
 
+def _parse_tool_payload(result: str) -> dict:
+    try:
+        payload = json.loads(result)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _should_clear_pending_reservation_id(tool_name: str, payload: dict) -> bool:
+    if tool_name not in {"tool_confirm_reservation", "tool_cancel_reservation"}:
+        return False
+    if not payload.get("error"):
+        return True
+
+    error = str(payload.get("error") or "").lower()
+    return any(fragment in error for fragment in ("already confirmed", "already cancelled", "expired", "not found"))
+
+
+def _apply_tool_result_context(session_id: str, tool_name: str, tool_args: dict, result: str) -> None:
+    payload = _parse_tool_payload(result)
+    conversation.update_active_context(
+        session_id,
+        extract_context_from_tool_result(
+            tool_name,
+            tool_args,
+            result,
+            conversation.get_active_context(session_id),
+        ),
+    )
+    if _should_clear_pending_reservation_id(tool_name, payload):
+        conversation.clear_active_context_keys(session_id, "pending_reservation_id")
+
+
 def _build_nearest_course_reply(payload: dict) -> str:
     nearest_courses = payload.get("nearest_courses") or []
     user_area = payload.get("user_area") or "your area"
@@ -444,6 +477,27 @@ async def chat(
         conversation.add_message(session_id, "assistant", reply)
         return ChatResponse(reply=reply, session_id=session_id, tool_calls_made=[])
 
+    pending_reservation_id = conversation.get_active_context(session_id).get("pending_reservation_id")
+    if pending_reservation_id and is_affirmative_response(request.message):
+        result = await mcp_client.call_tool(
+            "tool_confirm_reservation",
+            {"reservation_id": pending_reservation_id},
+        )
+        payload = _parse_tool_payload(result)
+        _apply_tool_result_context(
+            session_id,
+            "tool_confirm_reservation",
+            {"reservation_id": pending_reservation_id},
+            result,
+        )
+        reply = str(payload.get("message") or payload.get("error") or "Reservation confirmation failed.")
+        conversation.add_message(session_id, "assistant", reply)
+        return ChatResponse(
+            reply=reply,
+            session_id=session_id,
+            tool_calls_made=["tool_confirm_reservation"],
+        )
+
     # Get conversation history
     reply = "I'm sorry, I couldn't generate a response."
     tool_calls_made: list[str] = []
@@ -497,15 +551,7 @@ async def chat(
 
                 # Add tool result to conversation
                 conversation.add_tool_result(session_id, tool_call_id, result)
-                conversation.update_active_context(
-                    session_id,
-                    extract_context_from_tool_result(
-                        tool_name,
-                        tool_args,
-                        result,
-                        conversation.get_active_context(session_id),
-                    ),
-                )
+                _apply_tool_result_context(session_id, tool_name, tool_args, result)
 
     else:
         # max_iterations exceeded

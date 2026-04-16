@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
 from .tools.search import search_tee_times, get_course_info, suggest_alternatives, recommend_tee_times
@@ -27,6 +29,8 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 logger = logging.getLogger("mcp_server")
+
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 # ---------------------------------------------------------------------------
 # FastMCP Instance

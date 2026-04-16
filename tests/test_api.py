@@ -564,6 +564,87 @@ class TestChatEndpoint:
             assert '"weather_check":' in tool_messages[-1]["content"]
 
     @pytest.mark.asyncio
+    async def test_chat_confirms_pending_reservation_on_affirmative_reply(self):
+        from backend.host.app import app
+
+        tool_call_message = MagicMock()
+        tool_call_message.content = None
+        tool_call_message.tool_calls = [MagicMock()]
+        tool_call_message.model_dump.return_value = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "tool_make_reservation", "arguments": "{}"},
+                }
+            ],
+        }
+
+        final_message = MagicMock()
+        final_message.content = "Please confirm your reservation."
+        final_message.tool_calls = None
+        final_message.model_dump.return_value = {
+            "role": "assistant",
+            "content": final_message.content,
+            "tool_calls": None,
+        }
+
+        with patch("backend.host.app.llm_client") as mock_llm, \
+             patch("backend.host.app.mcp_client") as mock_mcp, \
+             patch("backend.host.app.get_weather_forecast") as mock_weather:
+
+            mock_llm.chat.side_effect = [tool_call_message, final_message]
+            mock_llm.parse_tool_calls.side_effect = [
+                [{"id": "call_1", "name": "tool_make_reservation", "arguments": {"tee_time_id": 123, "num_players": 2}}],
+                [],
+            ]
+            mock_weather.return_value = {
+                "assessment": "good",
+                "message": "Conditions look good for golf: sunny, 21C, 5% rain chance, 8 km/h wind.",
+            }
+            mock_mcp.list_openai_tools = AsyncMock(return_value=[])
+            mock_mcp.call_tool = AsyncMock(side_effect=[
+                (
+                    '{"reservation": {"id": 44, "course_name": "Tama Hills Golf Course", '
+                    '"tee_datetime": "2026-04-16T12:00:00"}, '
+                    '"message": "Reservation created! Please confirm within 10 minutes."}'
+                ),
+                (
+                    '{"reservation": {"id": 44, "course_name": "Tama Hills Golf Course", '
+                    '"tee_datetime": "2026-04-16T12:00:00", "status": "CONFIRMED", '
+                    '"confirmation_number": "GR-20260416-ABCD"}, '
+                    '"message": "Reservation confirmed! Your confirmation number is GR-20260416-ABCD."}'
+                ),
+            ])
+
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                headers = await auth_headers(client)
+                first = await client.post(
+                    "/chat",
+                    json={"message": "Please continue with the reservation."},
+                    headers=headers,
+                )
+                session_id = first.json()["session_id"]
+                second = await client.post(
+                    "/chat",
+                    json={"message": "yes", "session_id": session_id},
+                    headers=headers,
+                )
+
+            assert first.status_code == 200
+            assert second.status_code == 200
+            assert second.json()["reply"] == "Reservation confirmed! Your confirmation number is GR-20260416-ABCD."
+            assert second.json()["tool_calls_made"] == ["tool_confirm_reservation"]
+            assert mock_mcp.call_tool.await_args_list[1].args == (
+                "tool_confirm_reservation",
+                {"reservation_id": 44},
+            )
+            assert mock_llm.chat.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_chat_returns_502_for_malformed_tool_call(self):
         from backend.host.app import app
         from backend.host.llm import ToolCallParseError

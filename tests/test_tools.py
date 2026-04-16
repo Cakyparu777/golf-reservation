@@ -4,6 +4,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -549,3 +550,29 @@ class TestListUserReservationsTool:
             user_email="filter@example.com", status_filter="PENDING"
         )
         assert pending["total"] == 0
+
+    def test_list_uses_supabase_service_role_when_available(self):
+        row = {
+            "id": 9,
+            "tee_time_id": 12,
+            "user_id": 4,
+            "course_name": "Tokyo Kokusai Golf Club",
+            "tee_datetime": "2026-04-17T06:00:00",
+            "user_name": "Service Role User",
+            "user_email": "service@example.com",
+            "num_players": 2,
+            "total_price": 16150,
+            "status": "CONFIRMED",
+            "confirmation_number": "GR-20260417-TEST",
+            "hold_expires_at": None,
+            "created_at": "2026-04-17T00:00:00",
+            "updated_at": "2026-04-17T00:00:00",
+        }
+
+        with patch("backend.mcp_server.tools.user.is_supabase_service_role_configured", return_value=True), \
+             patch("backend.mcp_server.tools.user.list_reservations_for_email", return_value=[row]) as mock_list:
+            result = list_user_reservations(user_email="service@example.com")
+
+        assert result["total"] == 1
+        assert result["reservations"][0]["confirmation_number"] == "GR-20260417-TEST"
+        mock_list.assert_called_once_with(user_email="service@example.com", status_filter=None)

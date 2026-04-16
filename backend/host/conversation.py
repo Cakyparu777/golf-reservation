@@ -254,6 +254,16 @@ def update_active_context(session_id: str, updates: dict) -> dict:
     return context
 
 
+def clear_active_context_keys(session_id: str, *keys: str) -> dict:
+    state = dict(_get_state(session_id))
+    context = dict(state.get("active_context") or {})
+    for key in keys:
+        context.pop(key, None)
+    state["active_context"] = context
+    _save_state(session_id, state)
+    return context
+
+
 def set_pending_confirmation(session_id: str, details: dict) -> None:
     state = dict(_get_state(session_id))
     state["pending_confirmation"] = details
