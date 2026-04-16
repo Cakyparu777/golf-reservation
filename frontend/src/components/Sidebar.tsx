@@ -20,42 +20,49 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-48 bg-white flex flex-col h-full border-r border-gray-100 shrink-0">
-      <div className="px-5 pt-6 pb-4">
-        <span className="text-[#1a3d2b] font-bold text-lg tracking-tight">Fairway Elite</span>
+    <aside className="w-52 glass-dark flex flex-col h-full shrink-0 animate-fadeIn">
+      {/* Logo */}
+      <div className="px-5 pt-6 pb-4 flex items-center gap-2">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-green-700 to-green-900 flex items-center justify-center shadow-sm">
+          <span className="text-sm">⛳</span>
+        </div>
+        <span className="text-white font-bold text-base tracking-tight">Fairway Elite</span>
       </div>
 
-      <div className="px-4 pb-5">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-full bg-[#1a3d2b] flex items-center justify-center text-white text-xs font-semibold shrink-0">
+      {/* User Profile */}
+      <div className="px-4 pb-4">
+        <div className="flex items-center gap-2.5 bg-white/[.07] rounded-2xl px-3 py-2.5">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gold-500 to-gold-300 flex items-center justify-center text-green-950 text-xs font-bold shrink-0 shadow-sm">
             {user?.name.charAt(0).toUpperCase() ?? 'E'}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-800 truncate">{user?.name ?? 'Member'}</p>
-            <p className="text-xs text-gray-500 truncate">Elite Member Status</p>
+            <p className="text-sm font-semibold text-white truncate">{user?.name ?? 'Member'}</p>
+            <p className="text-[10px] text-white/40 tracking-wide uppercase font-medium">Elite Member</p>
           </div>
         </div>
       </div>
 
-      <div className="h-px bg-gray-100 mx-4 mb-2" />
+      {/* Divider */}
+      <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mx-4 mb-2" />
 
+      {/* Navigation */}
       <nav className="flex-1 px-3 py-2 space-y-0.5">
         {navItems.map(({ id, label, icon: Icon, to }) => (
           <NavLink
             key={id}
             to={to}
             className={({ isActive }) =>
-              `w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors relative ${
+              `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 relative ${
                 isActive
-                  ? 'text-[#1a3d2b] bg-[#f0f5f0]'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'text-white bg-white/[.12] shadow-sm'
+                  : 'text-white/50 hover:text-white/80 hover:bg-white/[.05]'
               }`
             }
           >
             {({ isActive }) => (
               <>
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-[#1a3d2b] rounded-r" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-gold-500 rounded-r-full transition-all" />
                 )}
                 <Icon size={16} strokeWidth={1.8} />
                 {label}
@@ -65,16 +72,17 @@ export default function Sidebar() {
         ))}
       </nav>
 
+      {/* Bottom */}
       <div className="px-4 pb-6 space-y-2">
         <NavLink
           to="/tee-times"
-          className="block w-full bg-[#1a3d2b] text-white rounded-full py-2.5 text-sm font-semibold hover:bg-[#1e4d33] transition-colors text-center"
+          className="block w-full bg-gradient-to-r from-gold-500 to-gold-400 text-green-950 rounded-xl py-2.5 text-sm font-bold hover:shadow-glow transition-all duration-300 text-center"
         >
           Book Now
         </NavLink>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 py-1 transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 text-xs text-white/25 hover:text-white/60 py-1.5 transition-colors"
         >
           <LogOut size={12} />
           Sign out

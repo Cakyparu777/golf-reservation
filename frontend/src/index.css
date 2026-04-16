@@ -2,23 +2,279 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Design Tokens ────────────────────────────────────────── */
+:root {
+  --green-950: #0d2318;
+  --green-900: #1a3d2b;
+  --green-800: #1e4d33;
+  --green-700: #2d6a4f;
+  --green-600: #3a8a66;
+  --gold-500: #c8922a;
+  --gold-400: #d4a645;
+  --gold-300: #e8c572;
+  --surface: #f4f6f0;
+  --surface-card: #ffffff;
+  --surface-muted: #fafbf7;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --border: #e5e7eb;
+  --border-light: #f0f1ec;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 1.75rem;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.03);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.03);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.08), 0 4px 12px rgba(0,0,0,.04);
+  --shadow-glow: 0 0 20px rgba(26,61,43,.12);
+}
+
+/* ── Base ─────────────────────────────────────────────────── */
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: 'Inter', system-ui, sans-serif;
-  background: #f4f6f0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--surface);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Scrollbar ────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: #d1d5db;
-  border-radius: 3px;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Dark-section scrollbar */
+.dark-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.15);
+}
+.dark-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,.25);
+}
+
+/* ── Animations ───────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .7; }
+}
+
+@keyframes progressFill {
+  from { width: 0; }
+}
+
+@keyframes bounceIn {
+  0%   { transform: scale(0.3); opacity: 0; }
+  50%  { transform: scale(1.05); }
+  70%  { transform: scale(0.95); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes confettiDrop {
+  0%   { transform: translateY(-30px) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(60px) rotate(720deg); opacity: 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+@keyframes typingDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: .4; }
+  30%           { transform: translateY(-4px); opacity: 1; }
+}
+
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes ringPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(26,61,43,.3); }
+  70%  { box-shadow: 0 0 0 8px rgba(26,61,43,0); }
+  100% { box-shadow: 0 0 0 0 rgba(26,61,43,0); }
+}
+
+@keyframes toastSlide {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toastExit {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes toastProgress {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+/* ── Utility Classes ──────────────────────────────────────── */
+.animate-fadeIn       { animation: fadeIn .4s ease-out both; }
+.animate-slideUp      { animation: slideUp .45s cubic-bezier(.22,1,.36,1) both; }
+.animate-slideDown    { animation: slideDown .35s ease-out both; }
+.animate-slideInRight { animation: slideInRight .4s cubic-bezier(.22,1,.36,1) both; }
+.animate-slideInLeft  { animation: slideInLeft .4s cubic-bezier(.22,1,.36,1) both; }
+.animate-scaleIn      { animation: scaleIn .3s cubic-bezier(.22,1,.36,1) both; }
+.animate-bounceIn     { animation: bounceIn .5s cubic-bezier(.22,1,.36,1) both; }
+.animate-float        { animation: float 3s ease-in-out infinite; }
+.animate-pulseSoft    { animation: pulseSoft 2s ease-in-out infinite; }
+.animate-ringPulse    { animation: ringPulse 2s ease-out infinite; }
+.animate-gradientShift {
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+}
+
+/* Stagger support — apply stagger-1 … stagger-10 for sequential delays */
+.stagger-1  { animation-delay: 50ms; }
+.stagger-2  { animation-delay: 100ms; }
+.stagger-3  { animation-delay: 150ms; }
+.stagger-4  { animation-delay: 200ms; }
+.stagger-5  { animation-delay: 250ms; }
+.stagger-6  { animation-delay: 300ms; }
+.stagger-7  { animation-delay: 350ms; }
+.stagger-8  { animation-delay: 400ms; }
+.stagger-9  { animation-delay: 450ms; }
+.stagger-10 { animation-delay: 500ms; }
+
+/* ── Glass Morphism ───────────────────────────────────────── */
+.glass {
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,.35);
+}
+
+.glass-dark {
+  background: rgba(13,35,24,.82);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+/* ── Typing Indicator ─────────────────────────────────────── */
+.typing-dot {
+  animation: typingDot 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: .15s; }
+.typing-dot:nth-child(3) { animation-delay: .3s; }
+
+/* ── Card Hover Effects ───────────────────────────────────── */
+.card-hover {
+  transition: transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.img-zoom {
+  transition: transform .5s cubic-bezier(.22,1,.36,1);
+}
+.img-zoom:hover {
+  transform: scale(1.06);
+}
+
+/* ── Focus Ring ───────────────────────────────────────────── */
+.focus-ring:focus-within {
+  border-color: var(--green-900);
+  box-shadow: 0 0 0 3px rgba(26,61,43,.08);
+}
+
+/* ── Toast ────────────────────────────────────────────────── */
+.toast-enter  { animation: toastSlide .35s cubic-bezier(.22,1,.36,1) both; }
+.toast-exit   { animation: toastExit .25s ease-in both; }
+.toast-progress { animation: toastProgress linear both; }
+
+/* ── Responsive Helpers ───────────────────────────────────── */
+@media (max-width: 768px) {
+  .sidebar-desktop { display: none; }
+  .mobile-tabs     { display: flex; }
+}
+@media (min-width: 769px) {
+  .mobile-tabs { display: none; }
+}
+
+/* ── Markdown in Chat ─────────────────────────────────────── */
+.chat-markdown p { margin: 0.25em 0; }
+.chat-markdown strong { font-weight: 600; }
+.chat-markdown em { font-style: italic; }
+.chat-markdown ul,
+.chat-markdown ol {
+  padding-left: 1.25em;
+  margin: 0.35em 0;
+}
+.chat-markdown li { margin: 0.15em 0; }
+.chat-markdown code {
+  background: rgba(0,0,0,.06);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.chat-markdown pre {
+  background: #1a1a2e;
+  color: #e2e8f0;
+  padding: 0.75em 1em;
+  border-radius: 0.75em;
+  overflow-x: auto;
+  font-size: 0.82em;
+  margin: 0.5em 0;
+}
+.chat-markdown pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
 }

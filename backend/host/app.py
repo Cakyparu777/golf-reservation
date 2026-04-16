@@ -158,10 +158,13 @@ async def lifespan(app: FastAPI):
 
     llm_client = LLMClient()
     mcp_client = MCPClient()
+    await mcp_client.startup()
     logger.info("✅ Host initialized. LLM and MCP clients ready.")
 
     yield
 
+    if mcp_client:
+        await mcp_client.shutdown()
     logger.info("Shutting down host.")
 
 
@@ -294,72 +297,71 @@ async def chat(
     tool_calls_made: list[str] = []
     max_iterations = 5  # Safety limit for tool-call loops
 
-    async with mcp_client.connect() as mcp_session:
-        openai_tools = await mcp_client.list_openai_tools(mcp_session)
+    openai_tools = await mcp_client.list_openai_tools()
 
-        for iteration in range(max_iterations):
-            history = conversation.get_history(session_id)
-            context_note = build_context_system_note(conversation.get_active_context(session_id))
-            request_history = history + ([{"role": "system", "content": context_note}] if context_note else [])
+    for iteration in range(max_iterations):
+        history = conversation.get_history(session_id)
+        context_note = build_context_system_note(conversation.get_active_context(session_id))
+        request_history = history + ([{"role": "system", "content": context_note}] if context_note else [])
 
-            # Call OpenAI
-            assistant_message = llm_client.chat(request_history, openai_tools)
+        # Call OpenAI
+        assistant_message = llm_client.chat(request_history, openai_tools)
 
-            # Check if the LLM wants to call tools
-            try:
-                tool_calls = llm_client.parse_tool_calls(assistant_message)
-            except ToolCallParseError as exc:
-                logger.error("Malformed tool call returned by LLM: %s", exc)
-                raise HTTPException(
-                    status_code=502,
-                    detail="The language model returned an invalid tool call.",
-                ) from exc
+        # Check if the LLM wants to call tools
+        try:
+            tool_calls = llm_client.parse_tool_calls(assistant_message)
+        except ToolCallParseError as exc:
+            logger.error("Malformed tool call returned by LLM: %s", exc)
+            raise HTTPException(
+                status_code=502,
+                detail="The language model returned an invalid tool call.",
+            ) from exc
 
-            if not tool_calls:
-                # No tool calls — we have the final response
-                reply = assistant_message.content or "I'm sorry, I couldn't generate a response."
-                conversation.add_message(session_id, "assistant", reply)
+        if not tool_calls:
+            # No tool calls — we have the final response
+            reply = assistant_message.content or "I'm sorry, I couldn't generate a response."
+            conversation.add_message(session_id, "assistant", reply)
+            conversation.update_active_context(
+                session_id,
+                extract_context_from_assistant_reply(reply, conversation.get_active_context(session_id)),
+            )
+            break
+        else:
+            # Add the assistant's tool-call message to history
+            conversation.add_tool_call(session_id, assistant_message.model_dump())
+
+            # Execute each tool call via MCP
+            for tc in tool_calls:
+                tool_name = tc["name"]
+                tool_args = tc["arguments"]
+                tool_call_id = tc["id"]
+
+                tool_calls_made.append(tool_name)
+                logger.info(f"Tool call [{iteration+1}]: {tool_name}({tool_args})")
+
+                # Call the MCP tool
+                result = await mcp_client.call_tool(tool_name, tool_args)
+                result = _augment_tool_result_with_weather(tool_name, result)
+
+                # Add tool result to conversation
+                conversation.add_tool_result(session_id, tool_call_id, result)
                 conversation.update_active_context(
                     session_id,
-                    extract_context_from_assistant_reply(reply, conversation.get_active_context(session_id)),
+                    extract_context_from_tool_result(
+                        tool_name,
+                        tool_args,
+                        result,
+                        conversation.get_active_context(session_id),
+                    ),
                 )
-                break
-            else:
-                # Add the assistant's tool-call message to history
-                conversation.add_tool_call(session_id, assistant_message.model_dump())
 
-                # Execute each tool call via MCP
-                for tc in tool_calls:
-                    tool_name = tc["name"]
-                    tool_args = tc["arguments"]
-                    tool_call_id = tc["id"]
-
-                    tool_calls_made.append(tool_name)
-                    logger.info(f"Tool call [{iteration+1}]: {tool_name}({tool_args})")
-
-                    # Call the MCP tool
-                    result = await mcp_client.call_tool(mcp_session, tool_name, tool_args)
-                    result = _augment_tool_result_with_weather(tool_name, result)
-
-                    # Add tool result to conversation
-                    conversation.add_tool_result(session_id, tool_call_id, result)
-                    conversation.update_active_context(
-                        session_id,
-                        extract_context_from_tool_result(
-                            tool_name,
-                            tool_args,
-                            result,
-                            conversation.get_active_context(session_id),
-                        ),
-                    )
-
-        else:
-            # max_iterations exceeded
-            reply = (
-                "I'm sorry, I'm having trouble processing your request. "
-                "Could you try rephrasing it?"
-            )
-            conversation.add_message(session_id, "assistant", reply)
+    else:
+        # max_iterations exceeded
+        reply = (
+            "I'm sorry, I'm having trouble processing your request. "
+            "Could you try rephrasing it?"
+        )
+        conversation.add_message(session_id, "assistant", reply)
 
     return ChatResponse(
         reply=reply,

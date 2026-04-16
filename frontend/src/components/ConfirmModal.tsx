@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Calendar, Clock, Users, Flag, Award, MapPin, CheckCircle, SunMedium, CloudSun, CloudRain } from 'lucide-react'
+import { X, Calendar, Clock, Users, Flag, Award, MapPin, CheckCircle, SunMedium, CloudSun, CloudRain, Loader2 } from 'lucide-react'
 import { useAuth, authFetch } from '../context/AuthContext'
 import type { CourseData } from './TeeTimesPage'
 import { formatJPY } from '../lib/currency'
@@ -45,6 +45,7 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
     }
 
     let cancelled = false
+    setWeather(null)
 
     fetchWeatherForTeeTime(course.name, selected.tee_datetime)
       .then((data) => {
@@ -104,75 +105,93 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
         : 'bg-amber-50 text-amber-700 border-amber-200'
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-3xl overflow-hidden flex max-w-3xl w-full shadow-2xl">
-        {/* Left: Course Image */}
-        <div className="w-72 relative shrink-0">
-          <img src={image} alt={course.name} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-          <div className="absolute bottom-5 left-5 text-white">
-            <p className="text-[10px] uppercase tracking-widest text-white/70 font-semibold mb-1">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 backdrop-blur-md bg-green-950/40 animate-fadeIn">
+      <div className="bg-white rounded-[2rem] overflow-hidden flex flex-col md:flex-row max-w-4xl w-full max-h-[90vh] shadow-elevated animate-scaleIn">
+        {/* Left: Course Image (hidden on very small screens) */}
+        <div className="w-full h-48 md:h-auto md:w-80 relative shrink-0 overflow-hidden">
+          <img src={image} alt={course.name} className="w-full h-full object-cover img-zoom" />
+          <div className="absolute inset-0 bg-gradient-to-t from-green-950/80 via-green-900/40 to-transparent" />
+          <div className="absolute bottom-6 left-6 right-6 text-white text-left">
+            <p className="text-[10px] uppercase tracking-[.2em] text-gold-300 font-bold mb-1.5 animate-slideUp stagger-1">
               Featured Destination
             </p>
-            <h3 className="text-lg font-bold leading-snug">{course.name}</h3>
-            <p className="text-xs text-white/80 flex items-center gap-1 mt-0.5">
-              <MapPin size={11} /> {course.location}
+            <h3 className="text-xl md:text-2xl font-black leading-tight animate-slideUp stagger-2">{course.name}</h3>
+            <p className="text-sm text-white/80 flex items-center gap-1 mt-2 animate-slideUp stagger-3">
+              <MapPin size={12} /> {course.location}
             </p>
           </div>
         </div>
 
         {/* Right: Booking Details */}
-        <div className="flex-1 p-7 flex flex-col overflow-y-auto max-h-[90vh]">
-          <div className="flex items-start justify-between mb-1">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">
-                {confirmed ? 'Booking Confirmed!' : 'Confirm Reservation'}
+        <div className="flex-1 p-6 md:p-8 flex flex-col overflow-y-auto no-scrollbar relative min-h-[400px]">
+          <div className="flex items-start justify-between mb-2">
+            <div className="animate-slideUp stagger-1">
+              <h2 className="text-2xl font-extrabold text-green-900">
+                {confirmed ? "You're on the fairway!" : 'Confirm Booking'}
               </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-sm text-gray-500 mt-1">
                 {confirmed ? `Confirmation # ${confirmed.confirmation_number}` : 'Review your elite booking details below.'}
               </p>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-              <X size={20} />
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 hover:text-gray-900 transition-colors shrink-0"
+            >
+              <X size={16} />
             </button>
           </div>
 
           {confirmed ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
-              <CheckCircle size={56} className="text-[#1a3d2b] mb-4" />
-              <p className="text-lg font-bold text-gray-900">You're on the fairway!</p>
-              <p className="text-sm text-gray-500 mt-1 mb-2">{course.name}</p>
-              <p className="text-2xl font-extrabold text-gray-900 mt-2">{formatJPY(confirmed.total_price)}</p>
-              <p className="text-xs text-gray-400 mt-1">Total charged</p>
+            <div className="flex-1 flex flex-col items-center justify-center text-center py-10 animate-scaleIn stagger-2 relative">
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {[...Array(12)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-2 h-2 rounded-sm bg-gold-400"
+                    style={{
+                      left: `${50 + (Math.random() * 40 - 20)}%`,
+                      top: '50%',
+                      animation: `confettiDrop 1.5s cubic-bezier(.22,1,.36,1) forwards`,
+                      animationDelay: `${Math.random() * 200}ms`,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-6 animate-bounceIn">
+                <CheckCircle size={40} className="text-green-600" />
+              </div>
+              <p className="text-2xl font-black text-green-900 mt-2 animate-slideUp stagger-3">{formatJPY(confirmed.total_price)}</p>
+              <p className="text-sm text-gray-500 mt-1 animate-slideUp stagger-4">Total amount charged to your card</p>
               <button
                 onClick={onClose}
-                className="mt-6 bg-[#1a3d2b] text-white px-8 py-2.5 rounded-full text-sm font-semibold hover:bg-[#1e4d33] transition-colors"
+                className="mt-8 bg-gradient-to-r from-green-900 to-green-800 text-white px-10 py-3 rounded-full text-sm font-bold hover:shadow-glow transition-all duration-300 animate-slideUp stagger-5"
               >
-                Done
+                Return to Clubhouse
               </button>
             </div>
           ) : (
-            <>
+            <div className="animate-slideUp stagger-2 flex-1">
               {/* Tee time selector */}
               {teeTimes.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select Tee Time</p>
-                  <div className="flex gap-2 flex-wrap">
+                <div className="mt-6">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Select Tee Time</p>
+                  <div className="flex gap-2.5 flex-wrap">
                     {teeTimes.slice(0, 6).map((tt) => {
                       const d = new Date(tt.tee_datetime)
                       const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
                       const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                      const isSelected = selected?.id === tt.id
                       return (
                         <button
                           key={tt.id}
                           onClick={() => setSelected(tt)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors ${
-                            selected?.id === tt.id
-                              ? 'bg-[#1a3d2b] text-white border-[#1a3d2b]'
-                              : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
+                          className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 border ${
+                            isSelected
+                              ? 'bg-green-900 border-green-900 text-white shadow-soft animate-ringPulse'
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50 hover:-translate-y-0.5 relative z-10'
                           }`}
                         >
-                          {dateStr} {timeStr}
+                          {dateStr} <span className={isSelected ? 'text-green-200 ml-1' : 'text-gray-400 ml-1'}>{timeStr}</span>
                         </button>
                       )
                     })}
@@ -181,17 +200,19 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
               )}
 
               {dt && (
-                <div className="grid grid-cols-2 gap-4 mt-5">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-5 mt-8 bg-surface-muted border border-gray-100 rounded-2xl p-5">
                   <Detail icon={Calendar} label="Date" value={dt.date} />
                   <Detail icon={Clock} label="Time" value={dt.time} />
                   <div>
-                    <p className="text-[10px] uppercase text-gray-400 font-semibold tracking-wide">Players</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Users size={14} className="text-gray-500" />
+                    <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest">Party Size</p>
+                    <div className="flex items-center gap-2 mt-1.5 focus-within:ring-2 focus-within:ring-green-900/10 rounded-lg pr-2 transition-shadow">
+                      <div className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center shrink-0">
+                        <Users size={12} className="text-gray-500" />
+                      </div>
                       <select
                         value={numPlayers}
                         onChange={(e) => setNumPlayers(Number(e.target.value))}
-                        className="text-sm font-semibold text-gray-900 bg-transparent outline-none"
+                        className="text-sm font-bold text-gray-900 bg-transparent outline-none w-full"
                       >
                         {[1, 2, 3, 4].map((n) => (
                           <option key={n} value={n}>
@@ -205,69 +226,75 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
                 </div>
               )}
 
-              {weather?.assessment && weather?.message && (
-                <div className={`mt-5 rounded-2xl border px-4 py-3 ${weatherTone}`}>
-                  <div className="flex items-center gap-2">
-                    <WeatherIcon size={16} />
+              {weather && (
+                <div className={`mt-4 rounded-2xl border px-5 py-4 flex items-start gap-3 animate-slideDown ${weatherTone}`}>
+                  <WeatherIcon size={18} className="shrink-0 animate-pulseSoft mt-0.5" />
+                  <div>
                     <p className="text-sm font-bold">
                       {weather.assessment === 'good'
-                        ? 'Good golf weather'
+                        ? 'Optimal Conditions'
                         : weather.assessment === 'bad'
-                          ? 'Challenging golf weather'
+                          ? 'Challenging Weather'
                           : 'Playable with caution'}
                     </p>
+                    <p className="text-xs mt-1 leading-relaxed opacity-90">{weather.message}</p>
                   </div>
-                  <p className="text-xs mt-1.5 leading-relaxed">{weather.message}</p>
                 </div>
               )}
 
               {/* Add-on */}
-              <div className="mt-5 bg-gray-50 rounded-2xl p-4 flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#1a3d2b] flex items-center justify-center shrink-0">
-                  <Award size={16} color="white" />
+              <div className="mt-4 bg-gradient-to-r from-gray-50 to-white border border-gray-100 rounded-2xl p-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-900 to-green-700 flex items-center justify-center shrink-0 shadow-soft">
+                  <Award size={18} color="white" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-[#1a3d2b]">Premium Caddie Service</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Dedicated professional guidance included for your foursome.
-                  </p>
+                  <p className="text-sm font-bold text-green-900">Premium Caddie Service</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Complimentary for Elite tier members.</p>
                 </div>
-                <span className="text-xs font-bold text-[#c8922a] border border-[#c8922a] px-2 py-0.5 rounded-full shrink-0">
-                  GOLD TIER
+                <span className="text-[10px] font-black text-gold-500 border border-gold-500/30 bg-gold-50 px-2.5 py-1 rounded-full shrink-0">
+                  INCLUDED
                 </span>
               </div>
 
               {error && (
-                <p className="mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-xl">{error}</p>
+                <div className="mt-4 text-sm font-medium text-rose-700 bg-rose-50 border border-rose-200 px-4 py-3 rounded-xl animate-slideDown">
+                  {error}
+                </div>
               )}
 
-              {/* Price */}
-              <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-4">
-                <p className="text-sm text-gray-500">Total Booking Fee</p>
-                <p className="text-2xl font-extrabold text-gray-900">{formatJPY(total)}</p>
+              {/* Footer */}
+              <div className="mt-8">
+                <div className="flex items-end justify-between mb-4">
+                  <p className="text-sm font-medium text-gray-500">Total Booking Fee</p>
+                  <p className="text-3xl font-black text-green-900 tracking-tight">{formatJPY(total)}</p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={onClose}
+                    disabled={loading}
+                    className="px-6 py-3.5 rounded-2xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirm}
+                    disabled={loading || !selected}
+                    className="flex-1 bg-gradient-to-r from-green-900 to-green-800 text-white rounded-2xl py-3.5 text-sm font-bold hover:shadow-glow transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-60 disabled:hover:shadow-none"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Processing…
+                      </>
+                    ) : (
+                      'Confirm Booking →'
+                    )}
+                  </button>
+                </div>
               </div>
-
-              <button
-                onClick={handleConfirm}
-                disabled={loading || !selected}
-                className="mt-4 w-full bg-[#1a3d2b] text-white rounded-2xl py-3.5 text-sm font-bold hover:bg-[#1e4d33] transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {loading ? 'Processing…' : 'Confirm Booking →'}
-              </button>
-              <button
-                onClick={onClose}
-                className="mt-2 text-xs text-gray-400 hover:text-gray-600 transition-colors text-center"
-              >
-                Cancel and return to Clubhouse
-              </button>
-            </>
+            </div>
           )}
         </div>
-      </div>
-
-      {/* Watermark */}
-      <div className="absolute bottom-6 right-8 text-4xl font-black text-white/10 select-none pointer-events-none tracking-widest">
-        FAIRWAY ELITE
       </div>
     </div>
   )
@@ -276,11 +303,13 @@ export default function ConfirmModal({ course, image, onClose }: Props) {
 function Detail({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] uppercase text-gray-400 font-semibold tracking-wide">{label}</p>
-      <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5 mt-1">
-        <Icon size={14} className="text-gray-500" />
-        {value}
-      </p>
+      <p className="text-[10px] uppercase text-gray-400 font-bold tracking-widest mb-1.5">{label}</p>
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center shrink-0">
+          <Icon size={12} className="text-gray-500" />
+        </div>
+        <p className="text-sm font-bold text-gray-900 truncate">{value}</p>
+      </div>
     </div>
   )
 }

@@ -1,17 +1,20 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ChatProvider } from './context/ChatContext'
+import { ToastProvider } from './context/ToastContext'
 import Sidebar from './components/Sidebar'
+import MobileTabs from './components/MobileTabs'
 import AssistantPage from './components/AssistantPage'
 import TeeTimesPage from './components/TeeTimesPage'
 import MyGolfPage from './components/MyGolfPage'
 import SettingsPage from './components/SettingsPage'
 import LoginPage from './components/LoginPage'
 import SignupPage from './components/SignupPage'
+import ToastContainer from './components/Toast'
 
 export type Page = 'assistant' | 'teetimes' | 'mygolf' | 'settings'
 
-const pagePaths: Record<Page, string> = {
+export const pagePaths: Record<Page, string> = {
   assistant: '/assistant',
   teetimes: '/tee-times',
   mygolf: '/my-golf',
@@ -33,8 +36,10 @@ function AppShell() {
   }
 
   return (
-    <div className="flex h-screen bg-[#f4f6f0] overflow-hidden">
-      <Sidebar />
+    <div className="flex h-screen bg-surface overflow-hidden">
+      <div className="sidebar-desktop">
+        <Sidebar />
+      </div>
       <main className="flex-1 overflow-auto">
         <Routes>
           <Route path="/assistant" element={<AssistantPage />} />
@@ -47,6 +52,8 @@ function AppShell() {
           <Route path="*" element={<Navigate to={pagePaths.assistant} replace />} />
         </Routes>
       </main>
+      <MobileTabs />
+      <ToastContainer />
     </div>
   )
 }
@@ -55,7 +62,9 @@ export default function App() {
   return (
     <AuthProvider>
       <ChatProvider>
-        <AppShell />
+        <ToastProvider>
+          <AppShell />
+        </ToastProvider>
       </ChatProvider>
     </AuthProvider>
   )

@@ -1,16 +1,26 @@
 import { useRef, useEffect, useState } from 'react'
-import { Send, Mic, Plus, Bot } from 'lucide-react'
+import { Send, Sparkles, Bot, Calendar, Cloud, Flag, Zap } from 'lucide-react'
 import { useChat } from '../context/ChatContext'
+import { useAuth } from '../context/AuthContext'
+import ChatBubble from './ChatBubble'
 
 const QUICK_ACTIONS = [
-  { label: 'Book Tee Time', prompt: 'Help me book a tee time.' },
-  { label: 'Good Weather Picks', prompt: 'Find me the best good-weather tee times this weekend for 2 players.' },
-  { label: 'Best Recommendation', prompt: 'Recommend the best tee times tomorrow based on weather, value, and availability.' },
-  { label: 'View Stats', prompt: 'Show me my recent golf stats.' },
+  { label: 'Book Tee Time', prompt: 'Help me book a tee time.', icon: Calendar, color: 'from-green-700 to-green-900' },
+  { label: 'Good Weather Picks', prompt: 'Find me the best good-weather tee times this weekend for 2 players.', icon: Cloud, color: 'from-sky-500 to-sky-700' },
+  { label: 'Best Recommendation', prompt: 'Recommend the best tee times tomorrow based on weather, value, and availability.', icon: Sparkles, color: 'from-gold-500 to-gold-400' },
+  { label: 'My Reservations', prompt: 'Show me my upcoming reservations.', icon: Flag, color: 'from-emerald-500 to-emerald-700' },
 ]
+
+function getGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
+}
 
 export default function AssistantPage() {
   const { messages, showQuickActions, loading, sendMessage, setShowQuickActions } = useChat()
+  const { user } = useAuth()
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -24,87 +34,81 @@ export default function AssistantPage() {
     sendMessage(text)
   }
 
+  const userName = user?.name?.split(' ')[0] ?? 'Pro'
+
   return (
     <div className="flex flex-col h-full">
-      {/* Hero Header */}
-      <div
-        className="relative h-52 bg-cover bg-center shrink-0"
-        style={{
-          backgroundImage:
-            "url('https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=1200&q=80')",
-        }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-white/80" />
-        <div className="absolute bottom-5 left-8">
-          <span className="bg-[#c8922a] text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full">
-            Premium Assistant
-          </span>
-          <h1 className="text-4xl font-extrabold text-[#1a3d2b] mt-1 drop-shadow-sm">
-            Good morning, Pro
+      {/* Compact Header */}
+      <div className="relative shrink-0 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-green-900 via-green-800 to-green-700 animate-gradientShift" />
+        <div className="absolute inset-0 opacity-[.04]" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }} />
+        <div className="relative px-6 md:px-8 py-6 md:py-8">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center backdrop-blur-sm">
+              <Zap size={14} className="text-gold-400" />
+            </div>
+            <span className="text-gold-400 text-[10px] font-bold uppercase tracking-[.15em]">
+              AI Caddie
+            </span>
+          </div>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight animate-slideUp">
+            {getGreeting()}, {userName}
           </h1>
-          <p className="text-sm text-gray-700 mt-0.5">
-            Your digital caddie is ready. Shall we review your upcoming rounds or analyze your recent stats?
+          <p className="text-sm text-white/50 mt-1 animate-slideUp stagger-1">
+            Your digital caddie is ready for today's round
           </p>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-8 py-5 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-5 space-y-4">
         {messages.map((msg, i) => (
-          <div key={i}>
-            {msg.role === 'assistant' ? (
-              <div className="flex gap-3 max-w-2xl">
-                <div className="w-8 h-8 rounded-full bg-[#1a3d2b] flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot size={14} color="white" />
-                </div>
-                <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3">
-                  <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-end gap-2 items-end">
-                <div className="max-w-sm">
-                  <div className="bg-[#1a3d2b] text-white rounded-2xl rounded-br-sm px-4 py-3">
-                    <p className="text-sm leading-relaxed">{msg.content}</p>
-                  </div>
-                  <p className="text-[10px] text-gray-400 text-right mt-1">Read {msg.timestamp}</p>
-                </div>
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-                  <span className="text-xs text-gray-600 font-semibold">P</span>
-                </div>
-              </div>
-            )}
-          </div>
+          <ChatBubble
+            key={i}
+            role={msg.role}
+            content={msg.content}
+            timestamp={msg.timestamp}
+            userName={user?.name}
+            index={i}
+          />
         ))}
 
-        {/* Quick actions shown only when no conversation yet */}
+        {/* Quick actions */}
         {showQuickActions && (
-          <div className="flex gap-2 pl-11 flex-wrap">
-            {QUICK_ACTIONS.map((action) => (
-              <button
-                key={action.label}
-                onClick={() => {
-                  setShowQuickActions(false)
-                  handleSend(action.prompt)
-                }}
-                className="border border-gray-300 rounded-full px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
-              >
-                {action.label}
-              </button>
-            ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pl-0 md:pl-11 max-w-xl animate-slideUp stagger-2">
+            {QUICK_ACTIONS.map((action, i) => {
+              const Icon = action.icon
+              return (
+                <button
+                  key={action.label}
+                  onClick={() => {
+                    setShowQuickActions(false)
+                    handleSend(action.prompt)
+                  }}
+                  className={`flex items-center gap-3 bg-white border border-gray-100 rounded-2xl px-4 py-3 text-left hover:shadow-card hover:-translate-y-0.5 transition-all duration-200 animate-slideUp stagger-${i + 3}`}
+                >
+                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${action.color} flex items-center justify-center shrink-0`}>
+                    <Icon size={15} color="white" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-700">{action.label}</span>
+                </button>
+              )
+            })}
           </div>
         )}
 
-        {/* Loading indicator */}
+        {/* Typing indicator */}
         {loading && (
-          <div className="flex gap-3 max-w-2xl">
-            <div className="w-8 h-8 rounded-full bg-[#1a3d2b] flex items-center justify-center shrink-0">
+          <div className="flex gap-3 max-w-2xl animate-slideUp">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-900 to-green-700 flex items-center justify-center shrink-0 shadow-soft">
               <Bot size={14} color="white" />
             </div>
-            <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
+            <div className="bg-white rounded-2xl rounded-tl-md px-4 py-3.5 shadow-soft border border-gray-100/60 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full typing-dot" />
+              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full typing-dot" />
+              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full typing-dot" />
             </div>
           </div>
         )}
@@ -113,30 +117,29 @@ export default function AssistantPage() {
       </div>
 
       {/* Input Bar */}
-      <div className="px-8 pb-6 pt-3 shrink-0">
-        <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
-          <button className="text-gray-400 hover:text-gray-600">
-            <Plus size={18} />
-          </button>
+      <div className="px-4 md:px-8 pb-4 md:pb-6 pt-3 shrink-0">
+        <div className="flex items-center gap-3 bg-white border border-gray-200/80 rounded-2xl px-4 py-3 shadow-soft focus-within:shadow-card focus-within:border-green-900/20 transition-all duration-200">
           <input
-            className="flex-1 text-sm outline-none placeholder-gray-400 text-gray-800"
-            placeholder="Type your message to GolfBot..."
+            id="chat-input"
+            className="flex-1 text-sm outline-none placeholder-gray-400 text-gray-800 bg-transparent"
+            placeholder="Ask your caddie anything..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend(input)}
             disabled={loading}
           />
-          <button className="text-gray-400 hover:text-gray-600">
-            <Mic size={18} />
-          </button>
           <button
+            id="chat-send"
             onClick={() => handleSend(input)}
             disabled={!input.trim() || loading}
-            className="w-8 h-8 bg-[#1a3d2b] rounded-full flex items-center justify-center disabled:opacity-40 hover:bg-[#1e4d33] transition-colors"
+            className="w-9 h-9 bg-gradient-to-br from-green-900 to-green-700 rounded-xl flex items-center justify-center disabled:opacity-30 hover:shadow-glow transition-all duration-200 hover:scale-105 active:scale-95"
           >
             <Send size={14} color="white" />
           </button>
         </div>
+        <p className="text-[10px] text-gray-300 text-center mt-2">
+          GolfBot may occasionally provide inaccurate information. Verify important details.
+        </p>
       </div>
     </div>
   )

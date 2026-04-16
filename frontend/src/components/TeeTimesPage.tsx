@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, Bell, User, MapPin, Star, Lock, SunMedium, CloudSun, CloudRain } from 'lucide-react'
+import { Search, MapPin, Star, Lock, SunMedium, CloudSun, CloudRain, Sparkles, ArrowRight } from 'lucide-react'
 import ConfirmModal from './ConfirmModal'
 import { useAuth } from '../context/AuthContext'
 import { formatJPY } from '../lib/currency'
@@ -56,6 +56,7 @@ export default function TeeTimesPage() {
   const [recommendations, setRecommendations] = useState<RecommendedTeeTime[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCourse, setSelectedCourse] = useState<CourseData | null>(null)
+  const [searchFocused, setSearchFocused] = useState(false)
 
   useEffect(() => {
     fetch('/api/courses', {
@@ -107,31 +108,27 @@ export default function TeeTimesPage() {
   }, [user])
 
   return (
-    <div className="min-h-full">
+    <div className="min-h-full animate-fadeIn">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-8 py-4 bg-white border-b border-gray-100">
-        <div className="relative">
+      <div className="flex items-center justify-between px-4 md:px-8 py-4 bg-white/80 backdrop-blur-lg border-b border-gray-100 sticky top-0 z-30">
+        <div className={`relative transition-all duration-300 ${searchFocused ? 'w-80' : 'w-56'}`}>
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            className="pl-9 pr-4 py-2 text-sm bg-gray-100 rounded-xl outline-none w-56 placeholder-gray-400"
+            id="course-search"
+            className="pl-9 pr-4 py-2 text-sm bg-gray-50 border border-transparent rounded-xl outline-none w-full placeholder-gray-400 focus:bg-white focus:border-green-900/20 focus:ring-2 focus:ring-green-900/10 transition-all"
             placeholder="Search courses..."
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
           />
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="relative text-gray-500 hover:text-gray-700">
-            <Bell size={20} />
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#c8922a] rounded-full" />
-          </button>
-          <div className="w-8 h-8 rounded-full bg-[#1a3d2b] flex items-center justify-center">
-            <User size={14} color="white" />
-          </div>
         </div>
       </div>
 
-      <div className="px-8 py-6">
-        <p className="text-xs font-bold text-[#c8922a] uppercase tracking-widest mb-1">Curated Selection</p>
-        <h1 className="text-3xl font-extrabold text-[#1a3d2b] mb-2">Recommended Fairways</h1>
-        <div className="flex items-start justify-between gap-4">
+      <div className="px-4 md:px-8 py-6">
+        <div className="animate-slideUp">
+          <p className="text-xs font-bold text-gold-500 uppercase tracking-[.15em] mb-1">Curated Selection</p>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-green-900 mb-2">Recommended Fairways</h1>
+        </div>
+        <div className="flex flex-col md:flex-row items-start justify-between gap-4 animate-slideUp stagger-1">
           <p className="text-sm text-gray-500 max-w-xs">
             Elite choices for your next round, hand-picked based on your play style and current conditions.
           </p>
@@ -140,10 +137,10 @@ export default function TeeTimesPage() {
               <button
                 key={f}
                 onClick={() => setActiveFilter(f)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
                   activeFilter === f
-                    ? 'bg-[#1a3d2b] text-white'
-                    : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'
+                    ? 'bg-green-900 text-white shadow-sm'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                 }`}
               >
                 {f}
@@ -152,39 +149,40 @@ export default function TeeTimesPage() {
           </div>
         </div>
 
+        {/* Recommendations */}
         {recommendations.length > 0 && (
-          <div className="mt-6 bg-white rounded-3xl p-5 shadow-sm border border-[#e7ecdf]">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
-                <p className="text-xs font-bold text-[#c8922a] uppercase tracking-widest mb-1">Smart Suggestions</p>
-                <h2 className="text-xl font-extrabold text-[#1a3d2b]">Best Times To Play Next</h2>
-                <p className="text-sm text-gray-500 mt-1">Weather-aware picks for tomorrow morning, ranked by conditions, value, availability, and your travel profile.</p>
-              </div>
+          <div className="mt-6 bg-white rounded-3xl p-5 shadow-soft border border-gray-100/60 animate-slideUp stagger-2">
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles size={14} className="text-gold-500" />
+              <p className="text-xs font-bold text-gold-500 uppercase tracking-[.15em]">Smart Suggestions</p>
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              {recommendations.map((recommendation) => (
-                <RecommendationCard key={recommendation.tee_time.id} recommendation={recommendation} />
+            <h2 className="text-lg font-extrabold text-green-900">Best Times To Play Next</h2>
+            <p className="text-sm text-gray-500 mt-1 mb-4">Weather-aware picks for tomorrow morning.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {recommendations.map((recommendation, i) => (
+                <RecommendationCard key={recommendation.tee_time.id} recommendation={recommendation} index={i} />
               ))}
             </div>
           </div>
         )}
 
+        {/* Course Grid */}
         {loading ? (
-          <div className="grid grid-cols-3 gap-4 mt-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-sm animate-pulse">
-                <div className="h-40 bg-gray-200" />
+              <div key={i} className="bg-white rounded-2xl overflow-hidden shadow-soft animate-pulse">
+                <div className="h-40 bg-gray-100" />
                 <div className="p-4 space-y-2">
-                  <div className="h-4 bg-gray-200 rounded w-2/3" />
-                  <div className="h-3 bg-gray-100 rounded w-1/2" />
-                  <div className="h-3 bg-gray-100 rounded w-3/4" />
+                  <div className="h-4 bg-gray-100 rounded w-2/3" />
+                  <div className="h-3 bg-gray-50 rounded w-1/2" />
+                  <div className="h-3 bg-gray-50 rounded w-3/4" />
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4 mt-6">
-            {courses.map((course) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+            {courses.map((course, i) => (
               <CourseCard
                 key={course.id}
                 course={course}
@@ -192,21 +190,22 @@ export default function TeeTimesPage() {
                 onSelect={setSelectedCourse}
                 formatDate={formatDate}
                 weather={weatherByCourseId[course.id]}
+                index={i}
               />
             ))}
 
             {/* Special Invitation Card */}
-            <div className="bg-[#1a3d2b] rounded-2xl p-5 flex flex-col justify-between text-white relative overflow-hidden">
+            <div className="bg-gradient-to-br from-green-900 to-green-950 rounded-2xl p-5 flex flex-col justify-between text-white relative overflow-hidden card-hover animate-slideUp stagger-6">
               <div
-                className="absolute inset-0 opacity-20 bg-cover bg-center"
+                className="absolute inset-0 opacity-10 bg-cover bg-center"
                 style={{ backgroundImage: `url('${COURSE_IMAGES[1]}')` }}
               />
               <div className="relative">
-                <span className="bg-[#c8922a] text-white text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full">
+                <span className="bg-gold-500 text-white text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full">
                   Special Invitation
                 </span>
                 <h3 className="text-xl font-bold mt-3 leading-snug">Marble Falls Invitational</h3>
-                <p className="text-xs text-white/70 mt-2 leading-relaxed">
+                <p className="text-xs text-white/60 mt-2 leading-relaxed">
                   Gain access to the year's most anticipated private tournament layout. Limited slots available for Elite Members only.
                 </p>
               </div>
@@ -215,13 +214,13 @@ export default function TeeTimesPage() {
                   {[0, 1, 2].map((i) => (
                     <div
                       key={i}
-                      className="w-6 h-6 rounded-full bg-gray-400 border-2 border-[#1a3d2b]"
+                      className="w-6 h-6 rounded-full bg-white/20 border-2 border-green-900"
                       style={{ marginLeft: i > 0 ? '-6px' : 0 }}
                     />
                   ))}
-                  <span className="text-xs text-white/70 ml-2">+42 Elite Members</span>
+                  <span className="text-xs text-white/50 ml-2">+42 Elite Members</span>
                 </div>
-                <button className="w-full bg-[#c8922a] text-white rounded-full py-2 text-sm font-semibold hover:bg-[#d4a645] transition-colors">
+                <button className="w-full bg-gradient-to-r from-gold-500 to-gold-400 text-green-950 rounded-xl py-2.5 text-sm font-bold hover:shadow-glow transition-all duration-300">
                   Inquire for Entry
                 </button>
               </div>
@@ -230,9 +229,9 @@ export default function TeeTimesPage() {
         )}
 
         {/* Bottom CTA */}
-        <div className="mt-6 bg-white rounded-2xl p-5 flex items-center justify-between shadow-sm">
+        <div className="mt-6 bg-white rounded-2xl p-5 flex flex-col sm:flex-row items-center justify-between shadow-soft border border-gray-100/60 gap-4 animate-slideUp">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#1a3d2b] flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-900 to-green-700 flex items-center justify-center shrink-0">
               <Star size={16} color="white" />
             </div>
             <div>
@@ -243,11 +242,8 @@ export default function TeeTimesPage() {
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
-            <button className="border border-gray-300 text-sm font-medium px-4 py-2 rounded-full hover:bg-gray-50 transition-colors">
-              Ask Assistant
-            </button>
-            <button className="border border-gray-300 text-sm font-medium px-4 py-2 rounded-full hover:bg-gray-50 transition-colors">
-              View Calendar
+            <button className="border border-gray-200 text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all flex items-center gap-1.5">
+              Ask Assistant <ArrowRight size={13} />
             </button>
           </div>
         </div>
@@ -264,7 +260,7 @@ export default function TeeTimesPage() {
   )
 }
 
-function RecommendationCard({ recommendation }: { recommendation: RecommendedTeeTime }) {
+function RecommendationCard({ recommendation, index }: { recommendation: RecommendedTeeTime; index: number }) {
   const teeTime = recommendation.tee_time
   const weatherAssessment = recommendation.weather_assessment
   const WeatherIcon =
@@ -282,13 +278,13 @@ function RecommendationCard({ recommendation }: { recommendation: RecommendedTee
         : 'bg-amber-50 text-amber-700 border-amber-200'
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-[#fafbf7] p-4">
+    <div className={`rounded-2xl border border-gray-100 bg-surface-muted p-4 card-hover animate-slideUp stagger-${index + 3}`}>
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-sm font-bold text-gray-900">{teeTime.course_name}</p>
           <p className="text-xs text-gray-500 mt-0.5">{formatDate(teeTime.tee_datetime)}</p>
         </div>
-        <span className="text-xs font-semibold text-[#1a3d2b]">{formatJPY(teeTime.price_per_player)}</span>
+        <span className="text-xs font-semibold text-green-900">{formatJPY(teeTime.price_per_player)}</span>
       </div>
       <div className={`inline-flex mt-3 items-center gap-1.5 rounded-full border px-2.5 py-1 ${weatherTone}`}>
         <WeatherIcon size={11} />
@@ -296,7 +292,7 @@ function RecommendationCard({ recommendation }: { recommendation: RecommendedTee
       </div>
       <p className="mt-3 text-xs text-gray-600 leading-relaxed">{recommendation.recommendation_reason}</p>
       {recommendation.weather_message && (
-        <p className="mt-2 text-xs text-gray-500 leading-relaxed">{recommendation.weather_message}</p>
+        <p className="mt-2 text-xs text-gray-400 leading-relaxed">{recommendation.weather_message}</p>
       )}
     </div>
   )
@@ -308,12 +304,14 @@ function CourseCard({
   onSelect,
   formatDate,
   weather,
+  index,
 }: {
   course: CourseData
   image: string
   onSelect: (c: CourseData) => void
   formatDate: (s: string | null) => string
   weather?: WeatherSummary | null
+  index: number
 }) {
   const WeatherIcon =
     weather?.assessment === 'good'
@@ -324,10 +322,10 @@ function CourseCard({
 
   const weatherTone =
     weather?.assessment === 'good'
-      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+      ? 'bg-emerald-50/90 text-emerald-700 border-emerald-200'
       : weather?.assessment === 'bad'
-        ? 'bg-rose-50 text-rose-700 border-rose-200'
-        : 'bg-amber-50 text-amber-700 border-amber-200'
+        ? 'bg-rose-50/90 text-rose-700 border-rose-200'
+        : 'bg-amber-50/90 text-amber-700 border-amber-200'
 
   const weatherLabel =
     weather?.assessment === 'good'
@@ -337,23 +335,23 @@ function CourseCard({
         : 'Mixed Weather'
 
   return (
-    <div className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-      <div className="relative h-40">
-        <img src={image} alt={course.name} className="w-full h-full object-cover" />
+    <div className={`bg-white rounded-2xl overflow-hidden shadow-soft card-hover animate-slideUp stagger-${(index % 6) + 1}`}>
+      <div className="relative h-40 overflow-hidden">
+        <img src={image} alt={course.name} className="w-full h-full object-cover img-zoom" />
         {course.rating && (
-          <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm rounded-full px-2 py-0.5 flex items-center gap-1">
+          <div className="absolute top-2.5 right-2.5 glass rounded-full px-2.5 py-1 flex items-center gap-1">
             <Star size={10} fill="#c8922a" color="#c8922a" />
             <span className="text-xs font-bold text-gray-800">{course.rating}</span>
           </div>
         )}
         {course.amenities.includes('caddie_service') && (
-          <div className="absolute top-2 left-2 bg-[#c8922a] text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex items-center gap-1">
+          <div className="absolute top-2.5 left-2.5 bg-gold-500/90 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full flex items-center gap-1">
             <Lock size={8} />
             Member Exclusive
           </div>
         )}
         {weather?.assessment && (
-          <div className={`absolute bottom-2 left-2 backdrop-blur-sm border rounded-full px-2.5 py-1 flex items-center gap-1.5 ${weatherTone}`}>
+          <div className={`absolute bottom-2.5 left-2.5 backdrop-blur-sm border rounded-full px-2.5 py-1 flex items-center gap-1.5 ${weatherTone}`}>
             <WeatherIcon size={11} />
             <span className="text-[10px] font-bold uppercase tracking-wide">{weatherLabel}</span>
           </div>
@@ -384,7 +382,7 @@ function CourseCard({
           </div>
           <button
             onClick={() => onSelect(course)}
-            className="bg-[#1a3d2b] text-white text-xs font-semibold px-4 py-1.5 rounded-full hover:bg-[#1e4d33] transition-colors"
+            className="bg-gradient-to-r from-green-900 to-green-800 text-white text-xs font-semibold px-4 py-2 rounded-xl hover:shadow-glow transition-all duration-200 hover:scale-[1.02] active:scale-[.98]"
           >
             Select
           </button>

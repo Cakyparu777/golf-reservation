@@ -182,7 +182,7 @@ docker compose up --build
 - conversation state は backend 側で持ち、認証と予約データは Supabase に任せる
 - SQLite はテストとオフライン fixture に限定
 - `/chat` は認証必須にして OpenAI 利用を保護
-- MCP サーバー接続は現在リクエストごとに stdio subprocess を起動するため、実運用なら persistent connection / pooling に置き換える余地がある
+- MCP サーバー接続は FastAPI 起動時に 1 本だけ確立して再利用し、tool 呼び出しは lock で直列化している。高い並列性が必要なら次は small pool 化が候補
 
 ## ディレクトリ構成
 

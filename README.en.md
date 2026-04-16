@@ -176,7 +176,7 @@ The final migration fixes the original mixed state by:
 - conversation state stays in the backend because prompt-only memory is not reliable enough for booking flows
 - SQLite is retained only for tests and offline fixtures
 - `/chat` requires authentication so the backend does not expose unauthenticated OpenAI spend
-- the MCP server is still started as a stdio subprocess per request today; for higher throughput this should move to a persistent connection or pool
+- the MCP server now stays connected for the lifetime of the FastAPI process and tool calls are serialized with a lock; if throughput becomes a concern, the next step is a small connection pool
 
 ## Project Structure
 

@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
@@ -26,7 +26,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left: Golf image */}
+      {/* Left: Hero */}
       <div
         className="hidden lg:flex lg:w-1/2 relative bg-cover bg-center"
         style={{
@@ -34,35 +34,41 @@ export default function LoginPage() {
             "url('https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?w=1200&q=80')",
         }}
       >
-        <div className="absolute inset-0 bg-[#1a3d2b]/60" />
-        <div className="relative z-10 flex flex-col justify-between p-10 text-white">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight">Fairway Elite</h1>
+        <div className="absolute inset-0 bg-gradient-to-br from-green-950/80 via-green-900/60 to-green-800/70" />
+        <div className="relative z-10 flex flex-col justify-between p-10 text-white w-full">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur-sm flex items-center justify-center">
+              <span className="text-lg">⛳</span>
+            </div>
+            <h1 className="text-xl font-black tracking-tight">Fairway Elite</h1>
           </div>
-          <div>
-            <blockquote className="text-xl font-light leading-relaxed italic">
+          <div className="animate-slideUp">
+            <blockquote className="text-xl font-light leading-relaxed italic max-w-md">
               "Golf is the closest game to the game we call life. You get bad breaks from good shots; you get good breaks from bad shots — but you have to play the ball where it lies."
             </blockquote>
-            <p className="mt-3 text-sm text-white/60">— Bobby Jones</p>
+            <p className="mt-3 text-sm text-white/50">— Bobby Jones</p>
           </div>
-          <div className="text-sm text-white/50">
-            © 2024 Fairway Elite. All rights reserved.
+          <div className="text-xs text-white/30">
+            © 2026 Fairway Elite. All rights reserved.
           </div>
         </div>
       </div>
 
       {/* Right: Form */}
-      <div className="flex-1 flex items-center justify-center bg-[#f4f6f0] px-6">
-        <div className="w-full max-w-sm">
-          <div className="lg:hidden mb-8">
-            <h1 className="text-2xl font-black text-[#1a3d2b]">Fairway Elite</h1>
+      <div className="flex-1 flex items-center justify-center bg-surface px-6">
+        <div className="w-full max-w-sm animate-slideUp">
+          <div className="lg:hidden mb-8 flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-green-900 to-green-700 flex items-center justify-center">
+              <span className="text-sm">⛳</span>
+            </div>
+            <h1 className="text-xl font-black text-green-900">Fairway Elite</h1>
           </div>
 
           <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
           <p className="text-sm text-gray-500 mt-1 mb-7">Sign in to your Elite account</p>
 
           {error && (
-            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl">
+            <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-2xl animate-slideDown">
               {error}
             </div>
           )}
@@ -73,12 +79,13 @@ export default function LoginPage() {
                 Email
               </label>
               <input
+                id="login-email"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="pro@example.com"
-                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-[#1a3d2b] focus:ring-2 focus:ring-[#1a3d2b]/10 transition"
+                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-green-900 focus:ring-2 focus:ring-green-900/10 transition-all"
               />
             </div>
 
@@ -88,17 +95,18 @@ export default function LoginPage() {
               </label>
               <div className="relative">
                 <input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-[#1a3d2b] focus:ring-2 focus:ring-[#1a3d2b]/10 transition pr-11"
+                  className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-green-900 focus:ring-2 focus:ring-green-900/10 transition-all pr-11"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -106,11 +114,19 @@ export default function LoginPage() {
             </div>
 
             <button
+              id="login-submit"
               type="submit"
               disabled={loading}
-              className="w-full bg-[#1a3d2b] text-white py-3 rounded-xl font-semibold text-sm hover:bg-[#1e4d33] transition disabled:opacity-60 mt-2"
+              className="w-full bg-gradient-to-r from-green-900 to-green-800 text-white py-3 rounded-xl font-semibold text-sm hover:shadow-glow transition-all duration-300 disabled:opacity-60 mt-2 flex items-center justify-center gap-2"
             >
-              {loading ? 'Signing in…' : 'Sign In'}
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Signing in…
+                </>
+              ) : (
+                'Sign In'
+              )}
             </button>
           </form>
 
@@ -118,7 +134,7 @@ export default function LoginPage() {
             Don't have an account?{' '}
             <Link
               to="/signup"
-              className="text-[#1a3d2b] font-semibold hover:underline"
+              className="text-green-900 font-semibold hover:underline"
             >
               Create one
             </Link>
